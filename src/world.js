@@ -873,6 +873,11 @@ function updateBot(bot, world, dt, prevXMap) {
   const deltaX = wrappedDelta(targetX, bot.pos.x);
   const deltaCenter = wrappedDelta(centerX, bot.pos.x);
   const laneSteer = clamp(deltaX * 2.2, -220, 220);
+  const underPressure = Math.abs(deltaCenter) > halfW * 0.88 || bot.hp < 34;
+  const retroChance = underPressure ? 0.28 : 0.06;
+  if (world.t >= (bot.retroReadyAt ?? 0) && random() < retroChance * dt) {
+    tryRetroBoost(bot, world);
+  }
 
   let desiredBeta = 0.58 + 0.16 * bot.brain.gateBias;
   if (Math.abs(deltaCenter) > halfW * 0.82) desiredBeta *= 0.86;

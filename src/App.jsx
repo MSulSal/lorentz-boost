@@ -42,6 +42,20 @@ function useKeyboard() {
   return keys;
 }
 
+function holdHandlers(ref, key) {
+  const set = (value) => (e) => {
+    e.preventDefault();
+    ref.current[key] = value;
+  };
+  return {
+    onPointerDown: set(true),
+    onPointerUp: set(false),
+    onPointerCancel: set(false),
+    onPointerLeave: set(false),
+    onContextMenu: (e) => e.preventDefault(),
+  };
+}
+
 function fmt(n, digits = 2) {
   return Number.isFinite(n) ? n.toFixed(digits) : '--';
 }
@@ -394,6 +408,19 @@ function AudioDock({ audioMix, setAudioMix }) {
   );
 }
 
+function TouchControls({ touchRef }) {
+  const left = holdHandlers(touchRef, 'a');
+  const right = holdHandlers(touchRef, 'd');
+  const reverse = holdHandlers(touchRef, 'space');
+  return (
+    <div className="touch-controls" aria-hidden="true">
+      <button type="button" className="touch-btn steer left" {...left}>A</button>
+      <button type="button" className="touch-btn reverse" {...reverse}>REV</button>
+      <button type="button" className="touch-btn steer right" {...right}>D</button>
+    </div>
+  );
+}
+
 function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
   const hud = getHud(world);
   return (
@@ -479,6 +506,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
 export default function App() {
   const canvasRef = useRef(null);
   const keys = useKeyboard();
+  const touchRef = useRef({ a: false, d: false, space: false });
   const worldRef = useRef(null);
   const audioRef = useRef(null);
   const cameraRef = useRef({ x: 0, zoom: 0.5 });
@@ -536,7 +564,13 @@ export default function App() {
     const loop = (now) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      const rawControls = keys.current;
+      const rawControls = {
+        a: !!(keys.current.a || touchRef.current.a),
+        d: !!(keys.current.d || touchRef.current.d),
+        space: !!(keys.current.space || touchRef.current.space),
+        p: !!keys.current.p,
+        t: !!keys.current.t,
+      };
       const controls = {
         ...rawControls,
         spacePressed: !!rawControls.space && !spaceLatch.current,
@@ -586,6 +620,7 @@ export default function App() {
       <LiveLeaderboard world={hudWorld} />
       <MinimapOverlay world={hudWorld} />
       <AudioDock audioMix={audioMix} setAudioMix={setAudioMix} />
+      <TouchControls touchRef={touchRef} />
       <button
         className={`hud-toggle ${hudOpen ? 'open' : ''}`}
         onClick={() => setHudOpen((v) => !v)}

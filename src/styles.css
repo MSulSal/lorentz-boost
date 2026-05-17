@@ -10,6 +10,9 @@
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 button, input { font: inherit; }
+html, body {
+  overscroll-behavior: none;
+}
 
 .app {
   position: relative;
@@ -209,6 +212,42 @@ kbd {
   margin-bottom: 6px;
 }
 
+.touch-controls {
+  position: absolute;
+  left: 50%;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 8;
+  display: none;
+  gap: 10px;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.touch-btn {
+  border: 1px solid rgba(168, 232, 255, 0.3);
+  background: rgba(10, 24, 38, 0.78);
+  color: rgba(242, 250, 255, 0.98);
+  border-radius: 12px;
+  min-width: 64px;
+  min-height: 52px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-btn.reverse {
+  min-width: 74px;
+  border-color: rgba(255, 170, 232, 0.42);
+  background: rgba(36, 14, 31, 0.82);
+}
+
+.touch-btn:active {
+  transform: translateY(1px) scale(0.98);
+}
+
 .rank {
   padding: 4px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -361,6 +400,21 @@ kbd {
   .brand-sub {
     font-size: 8px;
     letter-spacing: 0.14em;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .touch-controls {
+    display: flex;
+  }
+  .audio-dock {
+    bottom: calc(82px + env(safe-area-inset-bottom));
+  }
+  .minimap-overlay {
+    bottom: calc(82px + env(safe-area-inset-bottom));
+  }
+  .hud-toggle {
+    top: calc(8px + env(safe-area-inset-top));
   }
 }
 

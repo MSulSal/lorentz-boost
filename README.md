@@ -29,6 +29,7 @@
 - `Space`: time-direction flip
 - `P`: pause/resume
 - `T`: cycle team colors/flag
+- Mobile: on-screen touch controls for `A`, `D`, and `REV`
 
 ## Tech
 
