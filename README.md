@@ -6,6 +6,7 @@
 
 - You steer a rocket worldline in compactified 1+1D spacetime.
 - Every worldline segment is lethal, including your own past trace (paradox kill).
+- Tail-killing an opponent rescues/converts that rocket into your fleet (team).
 - Spacetime events and dead-worldline drops extend your trace lifetime.
 - Space flips your time direction (`+t` <-> `-t`) for aggressive reversals and traps.
 

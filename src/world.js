@@ -60,6 +60,7 @@ const PROGRESS_SCORE_SCALE = 0.03;
 const RESPAWN_BACKTRACK = 260;
 const KILL_SCORE = 260;
 const DEATH_SCORE_PENALTY = 190;
+const RESCUE_SCORE = 120;
 
 const COURSE_SAMPLE_DT = 1.25;
 const COURSE_LANE_WANDER = 220;
@@ -166,9 +167,60 @@ function randomTeamExcept(excludedTeamId) {
   return candidates[randomInt(candidates.length)] ?? TEAMS[0];
 }
 
+function botOrdinal(entityId) {
+  const match = /^bot-(\d+)$/.exec(entityId ?? '');
+  return match ? Number(match[1]) + 1 : null;
+}
+
+function refreshEntityName(entity) {
+  if (entity.kind !== 'bot') return;
+  const suffix = botOrdinal(entity.id) ?? entity.id ?? 'x';
+  const prefix = (entity.team?.name ?? 'BOT').toLowerCase();
+  entity.name = `${prefix}-${suffix}`;
+}
+
 function applyTeam(entity, team) {
   entity.team = team;
   entity.hue = team.primaryHue;
+  refreshEntityName(entity);
+}
+
+function sameFleet(a, b) {
+  const aTeam = a?.team?.id;
+  const bTeam = b?.team?.id;
+  return !!aTeam && !!bTeam && aTeam === bTeam;
+}
+
+function fleetId(entity) {
+  return entity?.team?.id ?? entity?.id ?? 'solo';
+}
+
+function buildFleetCountMap(entities) {
+  const counts = new Map();
+  for (const entity of entities ?? []) {
+    const id = fleetId(entity);
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function fleetSizeFor(entity, fleetCounts) {
+  return fleetCounts.get(fleetId(entity)) ?? 1;
+}
+
+function convertVictimToFleet(victim, killer, world) {
+  if (!killer || killer.id === victim.id) return;
+  if (sameFleet(victim, killer)) return;
+  if (!killer.team) return;
+  applyTeam(victim, killer.team);
+  killer.fleetRescues = (killer.fleetRescues ?? 0) + 1;
+  killer.score += RESCUE_SCORE;
+  emitFlash(world, {
+    type: 'rescue',
+    x: victim.pos.x,
+    t: world.t,
+    hue: killer.hue,
+  });
 }
 
 function interpolateXUnwrapped(prevX, currX, prevT, currT, t) {
@@ -382,6 +434,7 @@ function makeEntity(id, name, kind, x, team, initialVx = 0, timeDirection = 1, i
     retroReadyAt: 0,
     kills: 0,
     deaths: 0,
+    fleetRescues: 0,
     history: [],
     lastTrailAt: 0,
     brain: {
@@ -473,6 +526,7 @@ function killEntity(victim, killer, world, cause) {
   if (killer && killer.id !== victim.id) {
     killer.kills += 1;
     killer.score += KILL_SCORE;
+    convertVictimToFleet(victim, killer, world);
   }
   victim.deaths += 1;
   victim.score = Math.max(0, victim.score - DEATH_SCORE_PENALTY);
@@ -848,6 +902,9 @@ function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
 
       if (minDistance <= victim.radius + trail.radius + 2.5) {
         const killer = ownerById.get(trail.ownerId) ?? null;
+        if (killer && killer.id !== victim.id && sameFleet(killer, victim)) {
+          continue;
+        }
         killEntity(victim, killer, world, 'tail');
         dead = true;
         break;
@@ -1006,6 +1063,7 @@ export function cyclePlayerTeam(world) {
 
 export function getHud(world) {
   const p = world.player;
+  const fleetCounts = buildFleetCountMap(world.entities);
   const ranks = rankEntities(world);
   const placement = Math.max(1, ranks.findIndex((e) => e.id === p.id) + 1);
   const speed = mag(p.vel);
@@ -1039,6 +1097,8 @@ export function getHud(world) {
     winnerName: world.winnerName,
     playerKills: p.kills,
     playerDeaths: p.deaths,
+    playerFleetRescues: p.fleetRescues ?? 0,
+    playerFleetSize: fleetSizeFor(p, fleetCounts),
     timeDirection: p.timeDirection ?? 1,
     teamName: p.team?.name ?? 'SOLO',
     modeName: world.modeName,
@@ -1048,8 +1108,10 @@ export function getHud(world) {
 }
 
 export function rankEntities(world) {
+  const fleetCounts = buildFleetCountMap(world.entities);
   const sorted = [...world.entities].sort((a, b) => {
     if ((b.kills ?? 0) !== (a.kills ?? 0)) return (b.kills ?? 0) - (a.kills ?? 0);
+    if ((b.fleetRescues ?? 0) !== (a.fleetRescues ?? 0)) return (b.fleetRescues ?? 0) - (a.fleetRescues ?? 0);
     if ((a.deaths ?? 0) !== (b.deaths ?? 0)) return (a.deaths ?? 0) - (b.deaths ?? 0);
     if (b.score !== a.score) return b.score - a.score;
     if (b.properTime !== a.properTime) return b.properTime - a.properTime;
@@ -1060,5 +1122,6 @@ export function rankEntities(world) {
     .map((e) => ({
       ...e,
       wraps: (e.progress ?? 0) / TRACK_LENGTH,
+      fleetSize: fleetSizeFor(e, fleetCounts),
     }));
 }
