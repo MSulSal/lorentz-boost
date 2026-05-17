@@ -453,7 +453,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div className="meter-row"><span>placement</span><b>{hud.placement ?? '--'}</b></div>
         <div className="meter-row"><span>mode</span><b>DEATHMATCH</b></div>
         <div className="meter-row"><span>kills / deaths</span><b>{hud.playerKills} / {hud.playerDeaths}</b></div>
-        <div className="meter-row"><span>fleet captures</span><b>{hud.playerFleetCaptures ?? 0}</b></div>
+        <div className="meter-row"><span>fleet captures / losses</span><b>{hud.playerFleetCaptures ?? 0} / {hud.playerFleetLosses ?? 0}</b></div>
         <div className="meter-row"><span>fleet reserve</span><b>{hud.playerFleetReserve ?? 0}</b></div>
         <div className="meter-row"><span>fleet size</span><b>{hud.playerFleetSize ?? 1}</b></div>
         <div className="meter-row"><span>team flag</span><b>{hud.teamName}</b></div>

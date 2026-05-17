@@ -69,6 +69,7 @@ const EVENT_SPEED_BOOST_BASE = 6;
 const EVENT_SPEED_BOOST_PER_ENERGY = 0.52;
 const POLE_FLIP_COOLDOWN = 0.72;
 const POLE_FLIP_COORDTIME_OFFSET = 0.36;
+const CAPTURE_SELF_TRAIL_GRACE = 0.32;
 
 const COURSE_SAMPLE_DT = 1.25;
 const COURSE_LANE_WANDER = 220;
@@ -229,10 +230,17 @@ function collisionRadiusFor(entity) {
   return (entity?.radius ?? 0) + fleetHitboxBonus(entity);
 }
 
+function trailCollisionRadiusFor(victim, trailOwnerId) {
+  // Own-worldline checks use core ship radius to avoid invisible fleet-envelope drains.
+  if (trailOwnerId === victim?.id) return victim?.radius ?? 0;
+  return collisionRadiusFor(victim);
+}
+
 function convertVictimToFleet(victim, killer, world) {
   if (!killer || killer.id === victim.id) return false;
   // Fleet capture is abstract: we only add a ship-count token and visual formation ship.
   killer.fleetReserve = Math.max(0, (killer.fleetReserve ?? 0) + 1);
+  killer.recentCaptureUntil = Math.max(killer.recentCaptureUntil ?? 0, world.t + CAPTURE_SELF_TRAIL_GRACE);
   killer.fleetRescues = (killer.fleetRescues ?? 0) + 1;
   killer.score += CAPTURE_SCORE;
   emitFlash(world, {
@@ -267,6 +275,7 @@ function absorbFleetLoss(entity, world, losses = 1) {
   if (reserve <= 0) return totalLosses;
   const absorbed = Math.min(reserve, totalLosses);
   entity.fleetReserve = reserve - absorbed;
+  entity.fleetLosses = (entity.fleetLosses ?? 0) + absorbed;
   entity.hp = Math.max(36, entity.hp ?? 0);
   entity.invulnerableUntil = Math.max(entity.invulnerableUntil ?? 0, world.t + 0.45);
   emitFlash(world, {
@@ -512,9 +521,11 @@ function makeEntity(id, name, kind, x, team, initialVx = 0, timeDirection = 1, i
     invulnerableUntil: 0,
     retroReadyAt: 0,
     nextPoleFlipAt: 0,
+    recentCaptureUntil: 0,
     kills: 0,
     deaths: 0,
     fleetRescues: 0,
+    fleetLosses: 0,
     fleetReserve: 0,
     history: [],
     lastTrailAt: 0,
@@ -1014,6 +1025,7 @@ function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
 
     for (const trail of world.trails) {
       if (currSimT < trail.armT || currSimT > trail.expireT) continue;
+      if (trail.ownerId === victim.id && currSimT < (victim.recentCaptureUntil ?? 0)) continue;
 
       const victimMid = (prevUnwrappedX + currUnwrappedX) * 0.5;
       const trailDelta = wrappedDelta(trail.x1, trail.x0);
@@ -1037,7 +1049,7 @@ function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
         minDistance = Math.min(minDistance, d);
       }
 
-      const hitRadius = collisionRadiusFor(victim);
+      const hitRadius = trailCollisionRadiusFor(victim, trail.ownerId);
       if (minDistance <= hitRadius + trail.radius + 2.5) {
         const killerId = trail.ownerId ?? null;
         const isSelf = killerId === victim.id;
@@ -1302,6 +1314,7 @@ export function getHud(world) {
     playerKills: p.kills,
     playerDeaths: p.deaths,
     playerFleetCaptures: p.fleetRescues ?? 0,
+    playerFleetLosses: p.fleetLosses ?? 0,
     playerFleetReserve: Math.max(0, Math.floor(p.fleetReserve ?? 0)),
     playerFleetSize: fleetSizeFor(p),
     isRespawning: !!p.isRespawning,
