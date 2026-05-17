@@ -345,7 +345,7 @@ function LiveLeaderboard({ world }) {
       {ranks.map((r, i) => (
         <div className="live-rank" key={r.id}>
           <span>{i + 1}. {r.name}</span>
-          <b>{r.kills ?? 0}K / {r.deaths ?? 0}D / {r.fleetSize ?? 1}F</b>
+          <b>{r.kills ?? 0}K / {r.deaths ?? 0}D / {r.fleetSize ?? 1}F / {r.fleetRescues ?? 0}C / {r.fleetLosses ?? 0}L</b>
         </div>
       ))}
     </aside>
@@ -412,9 +412,15 @@ function TouchControls({ touchRef }) {
   const reverse = holdHandlers(touchRef, 'space');
   return (
     <div className="touch-controls" aria-hidden="true">
-      <button type="button" className="touch-btn steer left" {...left}>A</button>
-      <button type="button" className="touch-btn reverse" {...reverse}>REV</button>
-      <button type="button" className="touch-btn steer right" {...right}>D</button>
+      <button type="button" className="touch-btn steer left" aria-label="Steer left boost" {...left}>
+        <span className="touch-icon rocket-nw" aria-hidden="true">🚀</span>
+      </button>
+      <button type="button" className="touch-btn reverse" aria-label="Flip time direction" {...reverse}>
+        <span className="touch-icon rocket-flip" aria-hidden="true">🚀↺</span>
+      </button>
+      <button type="button" className="touch-btn steer right" aria-label="Steer right boost" {...right}>
+        <span className="touch-icon rocket-ne" aria-hidden="true">🚀</span>
+      </button>
     </div>
   );
 }
@@ -454,6 +460,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div className="meter-row"><span>mode</span><b>DEATHMATCH</b></div>
         <div className="meter-row"><span>kills / deaths</span><b>{hud.playerKills} / {hud.playerDeaths}</b></div>
         <div className="meter-row"><span>fleet captures / losses</span><b>{hud.playerFleetCaptures ?? 0} / {hud.playerFleetLosses ?? 0}</b></div>
+        <div className="meter-row"><span>reserve (captures-losses)</span><b>{(hud.playerFleetCaptures ?? 0) - (hud.playerFleetLosses ?? 0)}</b></div>
         <div className="meter-row"><span>fleet reserve</span><b>{hud.playerFleetReserve ?? 0}</b></div>
         <div className="meter-row"><span>fleet size</span><b>{hud.playerFleetSize ?? 1}</b></div>
         <div className="meter-row"><span>team flag</span><b>{hud.teamName}</b></div>

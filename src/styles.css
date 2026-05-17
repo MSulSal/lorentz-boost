@@ -231,29 +231,53 @@ kbd {
   transform: translateX(-50%);
   z-index: 8;
   display: none;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
   pointer-events: auto;
 }
 
 .touch-btn {
-  border: 1px solid rgba(168, 232, 255, 0.3);
-  background: rgba(10, 24, 38, 0.78);
+  border: 1px solid rgba(170, 235, 255, 0.36);
+  background: linear-gradient(180deg, rgba(14, 38, 66, 0.56), rgba(8, 20, 38, 0.5));
   color: rgba(242, 250, 255, 0.98);
-  border-radius: 12px;
-  min-width: 64px;
-  min-height: 52px;
+  border-radius: 14px;
+  min-width: 70px;
+  min-height: 56px;
+  display: grid;
+  place-items: center;
   font-weight: 700;
   letter-spacing: 0.08em;
+  box-shadow: inset 0 1px 0 rgba(220, 247, 255, 0.16), 0 8px 20px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 
 .touch-btn.reverse {
-  min-width: 74px;
-  border-color: rgba(255, 170, 232, 0.42);
-  background: rgba(36, 14, 31, 0.82);
+  min-width: 82px;
+  border-color: rgba(255, 176, 228, 0.42);
+  background: linear-gradient(180deg, rgba(46, 18, 40, 0.56), rgba(24, 12, 30, 0.5));
+}
+
+.touch-icon {
+  display: inline-block;
+  font-size: 26px;
+  line-height: 1;
+  filter: drop-shadow(0 0 10px rgba(132, 228, 255, 0.45));
+}
+
+.rocket-nw {
+  transform: rotate(-34deg);
+}
+
+.rocket-ne {
+  transform: rotate(34deg);
+}
+
+.rocket-flip {
+  letter-spacing: 0.03em;
+  filter: drop-shadow(0 0 10px rgba(255, 168, 228, 0.4));
 }
 
 .touch-btn:active {
@@ -431,15 +455,43 @@ kbd {
 @media (hover: none) and (pointer: coarse) {
   .touch-controls {
     display: flex;
-  }
-  .audio-dock {
-    top: calc(54px + env(safe-area-inset-top));
+    bottom: calc(12px + env(safe-area-inset-bottom));
   }
   .minimap-overlay {
-    bottom: calc(82px + env(safe-area-inset-bottom));
+    top: calc(8px + env(safe-area-inset-top));
+    left: 8px;
+    right: auto;
+    bottom: auto;
+    width: min(166px, 42vw);
+    transform: none;
   }
   .top-left-controls {
-    top: calc(8px + env(safe-area-inset-top));
+    display: none;
+  }
+  .hud,
+  .audio-dock,
+  .caption,
+  .live-leaderboard {
+    display: none !important;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+  .touch-controls {
+    gap: 10px;
+  }
+  .touch-btn {
+    min-width: 62px;
+    min-height: 48px;
+  }
+  .touch-icon {
+    font-size: 22px;
+  }
+  .touch-btn.reverse {
+    min-width: 72px;
+  }
+  .minimap-overlay {
+    width: min(150px, 30vw);
   }
 }
 
