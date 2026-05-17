@@ -183,7 +183,6 @@ function MinimapOverlay({ world }) {
   const worldlineBack = [];
   const worldlineFront = [];
   for (const entity of world.entities) {
-    if (entity.isRetired) continue;
     const hist = entity.history ?? [];
     for (let i = 2; i < hist.length; i += 3) {
       const a = hist[i - 1];
@@ -212,7 +211,6 @@ function MinimapOverlay({ world }) {
   }
 
   const points = world.entities
-    .filter((entity) => !entity.isRetired)
     .map((entity) => {
       const p = spherePointFromXT(entity.pos.x, entity.coordTime ?? world.t, world, geom);
       const px = p.px;
@@ -468,8 +466,8 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div><kbd>A</kbd><kbd>D</kbd><kbd>Left</kbd><kbd>Right</kbd> Lorentz steering and fuel burn</div>
         <div><kbd>Space</kbd> time reversal (x-axis reflection: face into past direction)</div>
         <div><kbd>Combat</kbd> all worldlines kill, including your own (paradox loops)</div>
-        <div><kbd>Fleet</kbd> tail-kill opponents to convert them into your team fleet</div>
-        <div><kbd>Fleet AI</kbd> rescued ships fly parallel in expanding triangle escort</div>
+        <div><kbd>Fleet</kbd> tail-kill opponents to add ships to your head formation reserve</div>
+        <div><kbd>Formation</kbd> reserve ships render in triangular lead formation and expand hitbox</div>
         <div><kbd>Drops</kbd> events + dead-worldline fragments extend your lethal worldline</div>
         <div><kbd>Respawn</kbd> cooldown only triggers on full fleet wipe</div>
         <div><kbd>Audio</kbd> click or press any key once to arm Doppler rocket sound</div>
@@ -644,7 +642,7 @@ export default function App() {
       )}
       <div className={`caption ${hudWorld.paused ? 'paused' : ''}`}>
         {hudWorld.paused ? 'PAUSED - press P to resume. ' : ''}
-        16-player compact Minkowski-sphere deathmatch: every worldline is lethal, tail kills rescue rivals into your fleet, spacetime events and dead traces extend your own trace, and Space flips your time direction.
+        16-player compact Minkowski-sphere deathmatch: every worldline is lethal, tail kills add ships to your triangular head fleet, spacetime events and dead traces extend your own trace, and Space flips your time direction.
       </div>
     </main>
   );

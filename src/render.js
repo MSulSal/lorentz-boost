@@ -12,6 +12,9 @@ const PIX = 1;
 const PIXEL_SCALE = 3;
 const MIN_RENDER_WIDTH = 320;
 const MIN_RENDER_HEIGHT = 180;
+const MAX_FORMATION_VISUAL_SHIPS = 28;
+const FORMATION_BACK_STEP = 8;
+const FORMATION_SIDE_STEP = 6;
 
 const STAR_COUNT = 180;
 const DUST_COUNT = 28;
@@ -434,6 +437,33 @@ function quantizeAngle(angle, steps = 20) {
   return Math.round(angle / step) * step;
 }
 
+function fleetShipCount(entity) {
+  const reserves = Math.max(0, Math.floor(entity?.fleetReserve ?? 0));
+  return (entity?.isRespawning ? 0 : 1) + reserves;
+}
+
+function fleetFormationSlots(shipCount) {
+  const count = Math.max(1, Math.min(MAX_FORMATION_VISUAL_SHIPS, Math.floor(shipCount || 1)));
+  const slots = [{ back: 0, side: 0, scale: 1, lead: true }];
+  let placed = 1;
+  for (let row = 1; placed < count; row++) {
+    const rowCount = row + 1;
+    const back = -row * FORMATION_BACK_STEP;
+    const span = row * FORMATION_SIDE_STEP;
+    for (let i = 0; i < rowCount && placed < count; i++) {
+      const side = rowCount <= 1 ? 0 : -span * 0.5 + (span * i) / (rowCount - 1);
+      slots.push({
+        back,
+        side,
+        scale: clamp(1 - row * 0.045, 0.78, 0.94),
+        lead: false,
+      });
+      placed += 1;
+    }
+  }
+  return slots;
+}
+
 function drawRocketPixel(ctx, entity, state, world, camera, opts) {
   const p = projectXT(state.pos.x, state.coordTime ?? state.t, camera);
   if (!visibleOnCanvas(p, camera, 180)) return;
@@ -457,44 +487,50 @@ function drawRocketPixel(ctx, entity, state, world, camera, opts) {
   const halfW = Math.floor(wid * 0.5);
   const flameFrame = Math.floor(world.t * 12 + (entity.id.length % 7)) % 4;
   const flame = Math.max(1, Math.round((1 + flameFrame) * (0.35 + 0.65 * (speed / C))));
+  const formationSlots = fleetFormationSlots(fleetShipCount(entity));
 
   ctx.save();
   ctx.translate(snap(p.x), snap(p.y));
   ctx.rotate(angle);
-  ctx.globalAlpha = alpha;
+  for (let i = formationSlots.length - 1; i >= 0; i--) {
+    const slot = formationSlots[i];
+    const slotFlame = slot.lead ? flame : Math.max(1, Math.floor(flame * 0.7));
+    const slotAlpha = slot.lead ? alpha : alpha * 0.84;
+    ctx.save();
+    ctx.translate(slot.back, slot.side);
+    if (slot.scale !== 1) ctx.scale(slot.scale, slot.scale);
+    ctx.globalAlpha = slotAlpha;
 
-  // Flame plume.
-  ctx.fillStyle = hsl(26, 96, 58, 0.95);
-  ctx.fillRect(-halfL - flame, -1, flame, 3);
-  ctx.fillStyle = hsl(50, 95, 74, 0.9);
-  ctx.fillRect(-halfL - Math.max(1, flame - 1), 0, Math.max(1, flame - 1), 1);
+    ctx.fillStyle = hsl(26, 96, 58, 0.95);
+    ctx.fillRect(-halfL - slotFlame, -1, slotFlame, 3);
+    ctx.fillStyle = hsl(50, 95, 74, 0.9);
+    ctx.fillRect(-halfL - Math.max(1, slotFlame - 1), 0, Math.max(1, slotFlame - 1), 1);
 
-  // Body slab.
-  ctx.fillStyle = hsl(shiftedPrimary, 74, 58, 0.96);
-  ctx.fillRect(-halfL, -halfW + 1, Math.max(4, len - 2), Math.max(3, wid - 2));
-  ctx.fillStyle = hsl(shiftedPrimary - 14, 62, 44, 0.95);
-  ctx.fillRect(-halfL, -halfW + 1, Math.max(3, Math.floor(len * 0.26)), Math.max(3, wid - 2));
+    ctx.fillStyle = hsl(shiftedPrimary, 74, slot.lead ? 58 : 53, 0.96);
+    ctx.fillRect(-halfL, -halfW + 1, Math.max(4, len - 2), Math.max(3, wid - 2));
+    ctx.fillStyle = hsl(shiftedPrimary - 14, 62, slot.lead ? 44 : 39, 0.95);
+    ctx.fillRect(-halfL, -halfW + 1, Math.max(3, Math.floor(len * 0.26)), Math.max(3, wid - 2));
 
-  // Cockpit stripe.
-  ctx.fillStyle = hsl(shiftedAccent, 82, 70, 0.96);
-  ctx.fillRect(Math.floor(-len * 0.1), -1, Math.max(2, Math.floor(len * 0.36)), 2);
+    ctx.fillStyle = hsl(shiftedAccent, 82, slot.lead ? 70 : 62, 0.96);
+    ctx.fillRect(Math.floor(-len * 0.1), -1, Math.max(2, Math.floor(len * 0.36)), 2);
 
-  // Nose as stepped pixels.
-  const noseX = Math.floor(len * 0.3);
-  ctx.fillStyle = hsl(shiftedPrimary + 12, 84, 66, 0.96);
-  ctx.fillRect(noseX, -2, 2, 5);
-  ctx.fillRect(noseX + 2, -1, 1, 3);
+    const noseX = Math.floor(len * 0.3);
+    ctx.fillStyle = hsl(shiftedPrimary + 12, 84, slot.lead ? 66 : 60, 0.96);
+    ctx.fillRect(noseX, -2, 2, 5);
+    ctx.fillRect(noseX + 2, -1, 1, 3);
 
-  // Fins.
-  ctx.fillStyle = hsl(shiftedPrimary - 24, 58, 43, 0.95);
-  ctx.fillRect(Math.floor(-len * 0.26), -halfW - 1, 2, 2);
-  ctx.fillRect(Math.floor(-len * 0.26), halfW - 1, 2, 2);
+    ctx.fillStyle = hsl(shiftedPrimary - 24, 58, slot.lead ? 43 : 38, 0.95);
+    ctx.fillRect(Math.floor(-len * 0.26), -halfW - 1, 2, 2);
+    ctx.fillRect(Math.floor(-len * 0.26), halfW - 1, 2, 2);
 
-  // Team flag.
-  ctx.fillStyle = 'rgba(245,250,255,0.9)';
-  ctx.fillRect(Math.floor(-len * 0.02), halfW + 1, 1, 3);
-  ctx.fillStyle = hsl(shiftedPrimary, 90, 62, 0.96);
-  ctx.fillRect(Math.floor(-len * 0.02) + 1, halfW + 1, 2, 2);
+    if (slot.lead) {
+      ctx.fillStyle = 'rgba(245,250,255,0.9)';
+      ctx.fillRect(Math.floor(-len * 0.02), halfW + 1, 1, 3);
+      ctx.fillStyle = hsl(shiftedPrimary, 90, 62, 0.96);
+      ctx.fillRect(Math.floor(-len * 0.02) + 1, halfW + 1, 2, 2);
+    }
+    ctx.restore();
+  }
 
   ctx.restore();
 
@@ -512,7 +548,7 @@ function drawRocketPixel(ctx, entity, state, world, camera, opts) {
 
 function drawTangent(ctx, world, camera) {
   const p = world.player;
-  if (p?.isRespawning || p?.isRetired) return;
+  if (p?.isRespawning) return;
   const coordNow = p.coordTime ?? world.t;
   const origin = projectXT(p.pos.x, coordNow, camera);
   const dtMag = 0.9;
@@ -603,7 +639,7 @@ function buildRenderQueue(world) {
   const observerCoordTime = world.player?.coordTime ?? world.t;
   return world.entities.map((entity) => {
     const isSelf = entity.id === world.player.id;
-    const inactive = !!(entity.isRespawning || entity.isRetired);
+    const inactive = !!entity.isRespawning;
     const current = entity.history[entity.history.length - 1] ?? {
       t: world.t,
       coordTime: entity.coordTime ?? world.t,

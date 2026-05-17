@@ -197,7 +197,7 @@ export function updateAudio(audio, world) {
   if (!audio || !world || !audio.ctx || audio.ctx.state !== 'running') return;
   const mix = audio.mix ?? DEFAULT_MIX;
   const now = audio.ctx.currentTime;
-  const entities = (world.entities ?? []).filter((e) => !e.isRespawning && !e.isRetired);
+  const entities = (world.entities ?? []).filter((e) => !e.isRespawning);
   const listener = world.player;
   if (audio.master) {
     audio.master.gain.setTargetAtTime(MASTER_BASE_GAIN * mix.master, now, 0.14);
@@ -211,10 +211,7 @@ export function updateAudio(audio, world) {
   }
 
   if (audio.bgmGain) {
-    const fleetSize = entities.reduce(
-      (count, entity) => count + ((entity.team?.id && entity.team.id === listener.team?.id) ? 1 : 0),
-      0,
-    );
+    const fleetSize = Math.max(1, 1 + Math.max(0, Math.floor(listener?.fleetReserve ?? 0)));
     const heroic = clamp((fleetSize - 1) / 11, 0, 1);
     let bgmLevel = BGM_BASE_GAIN;
     if (world.paused) bgmLevel = BGM_BASE_GAIN * 0.36;
