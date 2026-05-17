@@ -962,24 +962,28 @@ function spawnTrail(entity, world, prevWrappedX, prevCoordT, currCoordT, simNow)
 
 function maybeFlipAtTemporalPole(entity, world, prevCoordTime, currCoordTime) {
   const finishT = world.finishT ?? 0;
-  if (!(finishT > 0)) return;
-  if (world.t < (entity.nextPoleFlipAt ?? 0)) return;
+  if (!(finishT > 0)) return false;
+  if (world.t < (entity.nextPoleFlipAt ?? 0)) return false;
   const prevBand = Math.floor(prevCoordTime / finishT);
   const currBand = Math.floor(currCoordTime / finishT);
-  if (prevBand === currBand) return;
+  if (prevBand === currBand) return false;
 
   const forward = currCoordTime >= prevCoordTime;
   entity.timeDirection = forward ? -1 : 1;
   const seam = forward ? (prevBand + 1) * finishT : prevBand * finishT;
   entity.coordTime = seam + entity.timeDirection * POLE_FLIP_COORDTIME_OFFSET;
+  // Pole crossing transitions to the antipodal hemisphere on the compact sphere.
+  entity.pos = v(wrapX(entity.pos.x + TRACK_LENGTH * 0.5), 0);
   entity.nextPoleFlipAt = world.t + POLE_FLIP_COOLDOWN;
-  entity.invulnerableUntil = Math.max(entity.invulnerableUntil ?? 0, world.t + 0.16);
+  entity.invulnerableUntil = Math.max(entity.invulnerableUntil ?? 0, world.t + 0.3);
+  entity.lastTrailAt = world.t;
   emitFlash(world, {
     type: 'pole-flip',
     x: entity.pos.x,
     t: world.t,
     hue: (entity.hue ?? 200) + (entity.timeDirection > 0 ? 116 : 330),
   });
+  return true;
 }
 
 function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
@@ -1144,18 +1148,24 @@ export function stepWorld(world, controls, rawDt) {
     if (!isEntityActive(e)) continue;
     wrapPoint(e.pos);
     const prevCoordTime = prevCoordTimeMap.get(e.id) ?? (e.coordTime ?? world.t);
+    const prevUnwrappedX = prevUnwrappedXMap.get(e.id) ?? e.pos.x;
     e.coordTime = prevCoordTime + (e.timeDirection ?? 1) * dt;
-    maybeFlipAtTemporalPole(e, world, prevCoordTime, e.coordTime);
-    e.unwrappedX = unwrapFromPrev(e.pos.x, prevUnwrappedXMap.get(e.id) ?? e.pos.x);
-    spawnTrail(
-      e,
-      world,
-      prevXMap.get(e.id) ?? e.pos.x,
-      prevCoordTime,
-      e.coordTime,
-      world.t,
-    );
-    updateRaceProgress(e, prevUnwrappedXMap.get(e.id) ?? e.unwrappedX, e.unwrappedX, world);
+    const poleFlipped = maybeFlipAtTemporalPole(e, world, prevCoordTime, e.coordTime);
+    if (poleFlipped) {
+      // Skip seam-bridge traces/progress from antipodal remap.
+      e.unwrappedX = prevUnwrappedX;
+    } else {
+      e.unwrappedX = unwrapFromPrev(e.pos.x, prevUnwrappedX);
+      spawnTrail(
+        e,
+        world,
+        prevXMap.get(e.id) ?? e.pos.x,
+        prevCoordTime,
+        e.coordTime,
+        world.t,
+      );
+    }
+    updateRaceProgress(e, prevUnwrappedX, e.unwrappedX, world);
   }
 
   resolveTailKills(world, prevXMap, prevCoordTimeMap, currT);

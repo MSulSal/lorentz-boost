@@ -466,7 +466,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <h2>Controls</h2>
         <div><kbd>A</kbd><kbd>D</kbd><kbd>Left</kbd><kbd>Right</kbd> Lorentz steering and fuel burn</div>
         <div><kbd>Space</kbd> time reversal (x-axis reflection: face into past direction)</div>
-        <div><kbd>Pole wrap</kbd> crossing temporal seam auto-reflects your time direction</div>
+        <div><kbd>Pole wrap</kbd> crossing temporal seam auto-reflects time direction and remaps to antipodal hemisphere</div>
         <div><kbd>Combat</kbd> all worldlines kill, including your own (paradox loops)</div>
         <div><kbd>Fleet</kbd> tail-kill opponents to capture a ship into your head formation reserve</div>
         <div><kbd>Formation</kbd> reserve ships render in triangular lead formation and expand hitbox</div>
