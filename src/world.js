@@ -246,8 +246,10 @@ function convertVictimToFleet(victim, killer, world) {
 
 function consumeFleetReserve(entity, world) {
   if ((entity.fleetReserve ?? 0) <= 0) return false;
+  if ((entity.fleetReserveUsable ?? 0) <= 0) return false;
   const heading = Math.sign(entity.vel.x) || entity.facing || 1;
   entity.fleetReserve = Math.max(0, (entity.fleetReserve ?? 0) - 1);
+  entity.fleetReserveUsable = Math.max(0, (entity.fleetReserveUsable ?? 0) - 1);
   entity.progress = Math.max(0, (entity.progress ?? 0) - RESPAWN_BACKTRACK * 0.28);
   entity.unwrappedX = (entity.unwrappedX ?? entity.pos.x) - heading * RESPAWN_BACKTRACK * 0.32;
   entity.pos = v(wrapX(entity.unwrappedX), 0);
@@ -484,6 +486,7 @@ function makeEntity(id, name, kind, x, team, initialVx = 0, timeDirection = 1, i
     deaths: 0,
     fleetRescues: 0,
     fleetReserve: 0,
+    fleetReserveUsable: 0,
     history: [],
     lastTrailAt: 0,
     brain: {
@@ -1125,6 +1128,8 @@ export function stepWorld(world, controls, rawDt) {
     prevXMap.set(e.id, e.pos.x);
     prevUnwrappedXMap.set(e.id, e.unwrappedX ?? e.pos.x);
     prevCoordTimeMap.set(e.id, e.coordTime ?? world.t);
+    // Reserve captured this frame should not be consumed until the next frame.
+    e.fleetReserveUsable = Math.max(0, Math.floor(e.fleetReserve ?? 0));
   }
 
   if (isEntityActive(world.player)) {
