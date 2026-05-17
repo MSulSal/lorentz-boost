@@ -27,8 +27,8 @@ const DEATH_DROP_COUNT = 8;
 
 const PLAYER_RADIUS = 18;
 const BOT_RADIUS = 16.5;
-const PLAYER_MAX_BETA = 0.995;
-const BOT_MAX_BETA = 0.985;
+const PLAYER_MAX_BETA = 0.9;
+const BOT_MAX_BETA = 0.86;
 
 const STEER_THRUST = 410;
 const BOT_THRUST = 310;
