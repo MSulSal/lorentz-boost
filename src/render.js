@@ -529,7 +529,7 @@ function drawTangent(ctx, world, camera) {
 }
 
 function drawModeBanner(ctx, camera) {
-  const text = '4P MINKOWSKI SPHERE  TIME FLIP  WORLDLINE GROWTH';
+  const text = '16P MINKOWSKI SPHERE  TIME FLIP  WORLDLINE GROWTH';
   const x = Math.floor(camera.width * 0.5);
   const y = 10;
   const w = Math.min(220, camera.width - 8);

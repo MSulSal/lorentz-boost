@@ -11,7 +11,7 @@
 
 ## Current Ruleset
 
-- 4 players total (1 player + 3 bots)
+- 16 players total (1 player + 15 bots)
 - Minkowski-sphere style wrap/phase mapping
 - No gravity wells (removed for cleaner motion and readability)
 - Doppler-shifted rocket audio and relativistic visual treatment

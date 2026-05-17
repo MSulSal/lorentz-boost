@@ -346,7 +346,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div className="kicker">lorentz-boost / 1+1D spacetime sphere deathmatch</div>
         <h1>Past-worldline combat arena</h1>
         <p>
-          Four rockets fight on a compactified 1+1D Minkowski-sphere arena with random spawn points and mixed temporal orientations: no start line, no finish line, only survival via past-worldline kills.
+          Sixteen rockets fight on a compactified 1+1D Minkowski-sphere arena with random spawn points and mixed temporal orientations: no start line, no finish line, only survival via past-worldline kills.
         </p>
       </section>
 
@@ -532,7 +532,7 @@ export default function App() {
       )}
       <div className={`caption ${hudWorld.paused ? 'paused' : ''}`}>
         {hudWorld.paused ? 'PAUSED - press P to resume. ' : ''}
-        4-player compact Minkowski-sphere deathmatch: every worldline is lethal, spacetime events and dead traces extend your own trace, and Space flips your time direction.
+        16-player compact Minkowski-sphere deathmatch: every worldline is lethal, spacetime events and dead traces extend your own trace, and Space flips your time direction.
       </div>
     </main>
   );
