@@ -65,6 +65,11 @@ const RESCUE_SCORE = 120;
 const FLEET_FORMATION_SPACING = 14;
 const FLEET_HITBOX_SCALE = 0.94;
 const FLEET_HITBOX_MAX_BONUS = 52;
+const RESCUE_INVULNERABLE_SECONDS = 0.42;
+const EVENT_SPEED_BOOST_BASE = 6;
+const EVENT_SPEED_BOOST_PER_ENERGY = 0.52;
+const POLE_FLIP_COOLDOWN = 0.72;
+const POLE_FLIP_COORDTIME_OFFSET = 0.36;
 
 const COURSE_SAMPLE_DT = 1.25;
 const COURSE_LANE_WANDER = 220;
@@ -231,6 +236,7 @@ function convertVictimToFleet(victim, killer, world) {
   killer.fleetReserve = Math.max(0, (killer.fleetReserve ?? 0) + 1);
   killer.hp = Math.min(HP_MAX, (killer.hp ?? HP_MAX) + 22);
   killer.boostEnergy = Math.min(FUEL_MAX, (killer.boostEnergy ?? 0) + 20);
+  killer.invulnerableUntil = Math.max(killer.invulnerableUntil ?? 0, world.t + RESCUE_INVULNERABLE_SECONDS);
   killer.fleetRescues = (killer.fleetRescues ?? 0) + 1;
   killer.score += RESCUE_SCORE;
   emitFlash(world, {
@@ -477,6 +483,7 @@ function makeEntity(id, name, kind, x, team, initialVx = 0, timeDirection = 1, i
     respawnProgress: 0,
     invulnerableUntil: 0,
     retroReadyAt: 0,
+    nextPoleFlipAt: 0,
     kills: 0,
     deaths: 0,
     fleetRescues: 0,
@@ -824,11 +831,19 @@ function energyEventHit(entity, prevWrappedX, prevCoordT, currCoordT, event) {
   return Math.abs(xAtEventUnwrapped - eventXUnwrapped) <= hitRadius + event.radius + assist;
 }
 
+function applyEnergySpeedBoost(entity, event) {
+  const maxBeta = entity.kind === 'player' ? PLAYER_MAX_BETA : BOT_MAX_BETA;
+  const heading = Math.sign(entity.vel.x) || entity.facing || 1;
+  const gain = EVENT_SPEED_BOOST_BASE + event.energy * EVENT_SPEED_BOOST_PER_ENERGY;
+  entity.vel = limitVelocity(v(entity.vel.x + heading * gain, 0), maxBeta);
+}
+
 function collectEnergyEvents(entity, prevWrappedX, world, prevCoordT, currCoordT) {
   if (!isEntityActive(entity)) return;
   for (const event of world.energyEvents) {
     if (energyEventHit(entity, prevWrappedX, prevCoordT, currCoordT, event)) {
       entity.boostEnergy = Math.min(FUEL_MAX, entity.boostEnergy + event.energy);
+      applyEnergySpeedBoost(entity, event);
       const gainScale = event.deadWorldline ? TRACE_POINTS_GAIN_DEAD : TRACE_POINTS_GAIN_EVENT;
       entity.tracePoints = clampTracePoints(
         (entity.tracePoints ?? tracePointsStart(entity.kind)) + event.energy * gainScale,
@@ -946,6 +961,28 @@ function spawnTrail(entity, world, prevWrappedX, prevCoordT, currCoordT, simNow)
     expireT: simNow + lifetime,
     radius: entity.radius * radiusScale,
     hue: entity.team?.primaryHue ?? entity.hue,
+  });
+}
+
+function maybeFlipAtTemporalPole(entity, world, prevCoordTime, currCoordTime) {
+  const finishT = world.finishT ?? 0;
+  if (!(finishT > 0)) return;
+  if (world.t < (entity.nextPoleFlipAt ?? 0)) return;
+  const prevBand = Math.floor(prevCoordTime / finishT);
+  const currBand = Math.floor(currCoordTime / finishT);
+  if (prevBand === currBand) return;
+
+  const forward = currCoordTime >= prevCoordTime;
+  entity.timeDirection = forward ? -1 : 1;
+  const seam = forward ? (prevBand + 1) * finishT : prevBand * finishT;
+  entity.coordTime = seam + entity.timeDirection * POLE_FLIP_COORDTIME_OFFSET;
+  entity.nextPoleFlipAt = world.t + POLE_FLIP_COOLDOWN;
+  entity.invulnerableUntil = Math.max(entity.invulnerableUntil ?? 0, world.t + 0.16);
+  emitFlash(world, {
+    type: 'pole-flip',
+    x: entity.pos.x,
+    t: world.t,
+    hue: (entity.hue ?? 200) + (entity.timeDirection > 0 ? 116 : 330),
   });
 }
 
@@ -1112,6 +1149,7 @@ export function stepWorld(world, controls, rawDt) {
     wrapPoint(e.pos);
     const prevCoordTime = prevCoordTimeMap.get(e.id) ?? (e.coordTime ?? world.t);
     e.coordTime = prevCoordTime + (e.timeDirection ?? 1) * dt;
+    maybeFlipAtTemporalPole(e, world, prevCoordTime, e.coordTime);
     e.unwrappedX = unwrapFromPrev(e.pos.x, prevUnwrappedXMap.get(e.id) ?? e.pos.x);
     spawnTrail(
       e,
@@ -1187,6 +1225,7 @@ export function getHud(world) {
     playerKills: p.kills,
     playerDeaths: p.deaths,
     playerFleetRescues: p.fleetRescues ?? 0,
+    playerFleetReserve: Math.max(0, Math.floor(p.fleetReserve ?? 0)),
     playerFleetSize: fleetSizeFor(p),
     isRespawning: !!p.isRespawning,
     respawnRemaining: p.isRespawning ? Math.max(0, (p.respawnAt ?? world.t) - world.t) : 0,

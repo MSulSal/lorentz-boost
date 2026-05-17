@@ -383,6 +383,7 @@ function drawFlashes(ctx, world, camera) {
     if (f.type === 'rescue') hue = 168;
     if (f.type === 'wall-hit' || f.type === 'wall-kill') hue = 28;
     if (f.type === 'island-kill') hue = 332;
+    if (f.type === 'pole-flip') hue = 274;
     const fade = clamp(0.65 - age * 0.25, 0, 0.56);
     if (fade <= 0.01) continue;
     const r = Math.max(1, Math.round(1 + age * camera.zoom * C * 0.08));
