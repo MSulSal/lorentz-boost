@@ -1,0 +1,19 @@
+{
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {},
+  "name": "lorentz-boost",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "1+1D Minkowski-sphere worldline-combat prototype in React/Vite."
+}
