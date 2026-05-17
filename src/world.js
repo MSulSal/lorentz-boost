@@ -246,10 +246,8 @@ function convertVictimToFleet(victim, killer, world) {
 
 function consumeFleetReserve(entity, world) {
   if ((entity.fleetReserve ?? 0) <= 0) return false;
-  if ((entity.fleetReserveUsable ?? 0) <= 0) return false;
   const heading = Math.sign(entity.vel.x) || entity.facing || 1;
   entity.fleetReserve = Math.max(0, (entity.fleetReserve ?? 0) - 1);
-  entity.fleetReserveUsable = Math.max(0, (entity.fleetReserveUsable ?? 0) - 1);
   entity.progress = Math.max(0, (entity.progress ?? 0) - RESPAWN_BACKTRACK * 0.28);
   entity.unwrappedX = (entity.unwrappedX ?? entity.pos.x) - heading * RESPAWN_BACKTRACK * 0.32;
   entity.pos = v(wrapX(entity.unwrappedX), 0);
@@ -486,7 +484,6 @@ function makeEntity(id, name, kind, x, team, initialVx = 0, timeDirection = 1, i
     deaths: 0,
     fleetRescues: 0,
     fleetReserve: 0,
-    fleetReserveUsable: 0,
     history: [],
     lastTrailAt: 0,
     brain: {
@@ -617,11 +614,14 @@ function refreshRespawns(world) {
   }
 }
 
-function killEntity(victim, killer, world, cause) {
+function killEntity(victim, killer, world, cause, options = {}) {
+  const skipCapture = !!options.skipCapture;
   if (killer && killer.id !== victim.id) {
     killer.kills += 1;
     killer.score += KILL_SCORE;
-    convertVictimToFleet(victim, killer, world);
+    if (!skipCapture) {
+      convertVictimToFleet(victim, killer, world);
+    }
   }
 
   victim.deaths += 1;
@@ -991,6 +991,7 @@ function maybeFlipAtTemporalPole(entity, world, prevCoordTime, currCoordTime) {
 
 function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
   const ownerById = new Map(world.entities.map((e) => [e.id, e]));
+  const pendingKills = [];
   for (const victim of world.entities) {
     if (!isEntityActive(victim)) continue;
     if (currSimT < victim.invulnerableUntil) continue;
@@ -1028,13 +1029,33 @@ function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
 
       const hitRadius = collisionRadiusFor(victim);
       if (minDistance <= hitRadius + trail.radius + 2.5) {
-        const killer = ownerById.get(trail.ownerId) ?? null;
-        killEntity(victim, killer, world, 'tail');
+        pendingKills.push({
+          victimId: victim.id,
+          killerId: trail.ownerId ?? null,
+        });
         dead = true;
         break;
       }
     }
     if (dead) continue;
+  }
+
+  // Apply all fleet captures for this frame before consuming ships from deaths.
+  const capturedVictimIds = new Set();
+  for (const pending of pendingKills) {
+    const victim = ownerById.get(pending.victimId);
+    const killer = ownerById.get(pending.killerId);
+    if (!victim || !killer || killer.id === victim.id) continue;
+    if (capturedVictimIds.has(victim.id)) continue;
+    convertVictimToFleet(victim, killer, world);
+    capturedVictimIds.add(victim.id);
+  }
+
+  for (const pending of pendingKills) {
+    const victim = ownerById.get(pending.victimId);
+    if (!victim || !isEntityActive(victim)) continue;
+    const killer = ownerById.get(pending.killerId) ?? null;
+    killEntity(victim, killer, world, 'tail', { skipCapture: true });
   }
 }
 
@@ -1128,8 +1149,6 @@ export function stepWorld(world, controls, rawDt) {
     prevXMap.set(e.id, e.pos.x);
     prevUnwrappedXMap.set(e.id, e.unwrappedX ?? e.pos.x);
     prevCoordTimeMap.set(e.id, e.coordTime ?? world.t);
-    // Reserve captured this frame should not be consumed until the next frame.
-    e.fleetReserveUsable = Math.max(0, Math.floor(e.fleetReserve ?? 0));
   }
 
   if (isEntityActive(world.player)) {
