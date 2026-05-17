@@ -512,6 +512,7 @@ function drawRocketPixel(ctx, entity, state, world, camera, opts) {
 
 function drawTangent(ctx, world, camera) {
   const p = world.player;
+  if (p?.isRespawning) return;
   const coordNow = p.coordTime ?? world.t;
   const origin = projectXT(p.pos.x, coordNow, camera);
   const dtMag = 0.9;
@@ -602,6 +603,7 @@ function buildRenderQueue(world) {
   const observerCoordTime = world.player?.coordTime ?? world.t;
   return world.entities.map((entity) => {
     const isSelf = entity.id === world.player.id;
+    const inactive = !!entity.isRespawning;
     const current = entity.history[entity.history.length - 1] ?? {
       t: world.t,
       coordTime: entity.coordTime ?? world.t,
@@ -611,7 +613,9 @@ function buildRenderQueue(world) {
       radius: entity.radius,
       hue: entity.hue,
     };
-    const retarded = isSelf
+    const retarded = inactive
+      ? null
+      : isSelf
       ? current
       : findRetardedSnapshot(entity.history, world.player.pos, observerCoordTime, C);
     return { entity, isSelf, current, retarded };

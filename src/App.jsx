@@ -203,7 +203,7 @@ function MinimapOverlay({ world }) {
       const py = p.py;
       const front = p.depth >= 0;
       const hue = (entity.team?.primaryHue ?? entity.hue) + dopplerHueShift1D(entity.pos.x, entity.vel.x, world);
-      return { entity, px, py, front, hue };
+      return { entity, px, py, front, hue, inactive: !!entity.isRespawning };
     })
     .sort((a, b) => {
       if (a.front === b.front) return a.py - b.py;
@@ -293,7 +293,7 @@ function MinimapOverlay({ world }) {
           you:{playerTimeLabel}
         </text>
 
-        {points.map(({ entity, px, py, front, hue }) => {
+        {points.map(({ entity, px, py, front, hue, inactive }) => {
           const isPlayer = entity.id === world.player.id;
           const place = placementById.get(entity.id) ?? '-';
           return (
@@ -302,14 +302,14 @@ function MinimapOverlay({ world }) {
                 cx={px}
                 cy={py}
                 r={isPlayer ? 5 : 4}
-                fill={hueColor(hue, 0.98)}
+                fill={hueColor(hue, inactive ? 0.34 : 0.98)}
                 stroke={isPlayer ? 'rgba(255,255,255,0.96)' : 'rgba(255,255,255,0.86)'}
                 strokeWidth={isPlayer ? 1.5 : 1}
               />
               <text
                 x={px + 7}
                 y={py - 5}
-                fill={front ? 'rgba(230,245,255,0.92)' : 'rgba(182,206,226,0.9)'}
+                fill={inactive ? 'rgba(182,206,226,0.48)' : (front ? 'rgba(230,245,255,0.92)' : 'rgba(182,206,226,0.9)')}
                 fontSize="8"
                 fontFamily="ui-monospace, monospace"
               >
@@ -429,6 +429,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div className="meter-row"><span>fleet rescues</span><b>{hud.playerFleetRescues ?? 0}</b></div>
         <div className="meter-row"><span>fleet size</span><b>{hud.playerFleetSize ?? 1}</b></div>
         <div className="meter-row"><span>team flag</span><b>{hud.teamName}</b></div>
+        <div className="meter-row"><span>respawn</span><b>{hud.isRespawning ? `${fmt(hud.respawnRemaining, 1)}s` : 'active'}</b></div>
         <div className="meter-row"><span>simulation</span><b>{world.paused ? 'PAUSED' : 'running'}</b></div>
         <div className="meter-row"><span>c</span><b>{C} sim-px/s</b></div>
       </section>
@@ -441,6 +442,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div><kbd>Fleet</kbd> tail-kill opponents to convert them into your team fleet</div>
         <div><kbd>Fleet AI</kbd> rescued ships fly parallel in expanding triangle escort</div>
         <div><kbd>Drops</kbd> events + dead-worldline fragments extend your lethal worldline</div>
+        <div><kbd>Respawn</kbd> death triggers cooldown so others can grab remnants</div>
         <div><kbd>Audio</kbd> click or press any key once to arm Doppler rocket sound</div>
         <div><kbd>P</kbd> pause / resume</div>
         <div><kbd>T</kbd> cycle team colors + flag</div>

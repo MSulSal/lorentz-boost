@@ -58,6 +58,7 @@ const TRAIL_ARM_DELAY = 0.22;
 const RACE_T_FINAL = 144;
 const PROGRESS_SCORE_SCALE = 0.03;
 const RESPAWN_BACKTRACK = 260;
+const RESPAWN_COOLDOWN_SECONDS = 2.8;
 const KILL_SCORE = 260;
 const DEATH_SCORE_PENALTY = 190;
 const RESCUE_SCORE = 120;
@@ -458,6 +459,10 @@ function makeEntity(id, name, kind, x, team, initialVx = 0, timeDirection = 1, i
     timeDirection: timeDirection < 0 ? -1 : 1,
     coordTime: initialCoordTime,
     tracePoints: tracePointsStart(kind),
+    isRespawning: false,
+    respawnAt: 0,
+    respawnUnwrappedX: x,
+    respawnProgress: 0,
     invulnerableUntil: 0,
     retroReadyAt: 0,
     kills: 0,
@@ -550,6 +555,49 @@ function scatterDeadWorldlineDrops(victim, world) {
   }
 }
 
+function queueRespawn(entity, world) {
+  const heading = Math.sign(entity.vel.x) || entity.facing || 1;
+  entity.respawnProgress = Math.max(0, (entity.progress ?? 0) - RESPAWN_BACKTRACK * 0.45);
+  entity.respawnUnwrappedX = (entity.unwrappedX ?? entity.pos.x) - heading * RESPAWN_BACKTRACK;
+  const startPoints = tracePointsStart(entity.kind);
+  entity.tracePoints = clampTracePoints(
+    Math.max(startPoints * 0.6, (entity.tracePoints ?? startPoints) * TRACE_POINTS_KEEP_ON_DEATH),
+  );
+  entity.isRespawning = true;
+  entity.respawnAt = world.t + RESPAWN_COOLDOWN_SECONDS;
+  entity.hp = 0;
+  entity.vel = v(0, 0);
+  entity.lastTrailAt = world.t;
+}
+
+function reviveEntity(entity, world) {
+  entity.unwrappedX = entity.respawnUnwrappedX ?? entity.unwrappedX ?? entity.pos.x;
+  entity.progress = entity.respawnProgress ?? entity.progress ?? 0;
+  entity.pos = v(wrapX(entity.unwrappedX), 0);
+  entity.vel = v(24, 0);
+  entity.hp = HP_MAX;
+  entity.boostEnergy = FUEL_MAX * 0.45;
+  entity.invulnerableUntil = world.t + INVULNERABLE_SECONDS;
+  entity.facing = 1;
+  entity.isRespawning = false;
+  entity.respawnAt = 0;
+  entity.history = [snapshot(entity, world.t)];
+  emitFlash(world, {
+    type: 'respawn',
+    x: entity.pos.x,
+    t: world.t,
+    hue: entity.hue,
+  });
+}
+
+function refreshRespawns(world) {
+  for (const entity of world.entities) {
+    if (!entity.isRespawning) continue;
+    if ((entity.respawnAt ?? Infinity) > world.t) continue;
+    reviveEntity(entity, world);
+  }
+}
+
 function killEntity(victim, killer, world, cause) {
   if (killer && killer.id !== victim.id) {
     killer.kills += 1;
@@ -572,23 +620,7 @@ function killEntity(victim, killer, world, cause) {
     hue: killer?.hue ?? victim.hue,
   });
   scatterDeadWorldlineDrops(victim, world);
-
-  const heading = Math.sign(victim.vel.x) || victim.facing || 1;
-  const respawnProgress = Math.max(0, (victim.progress ?? 0) - RESPAWN_BACKTRACK * 0.45);
-  const respawnUnwrappedX = (victim.unwrappedX ?? victim.pos.x) - heading * RESPAWN_BACKTRACK;
-  victim.unwrappedX = respawnUnwrappedX;
-  victim.progress = respawnProgress;
-  victim.pos = v(wrapX(respawnUnwrappedX), 0);
-  victim.vel = v(24, 0);
-  victim.hp = HP_MAX;
-  victim.boostEnergy = FUEL_MAX * 0.45;
-  const startPoints = tracePointsStart(victim.kind);
-  victim.tracePoints = clampTracePoints(
-    Math.max(startPoints * 0.6, (victim.tracePoints ?? startPoints) * TRACE_POINTS_KEEP_ON_DEATH),
-  );
-  victim.invulnerableUntil = world.t + INVULNERABLE_SECONDS;
-  victim.facing = 1;
-  victim.history = [snapshot(victim, world.t)];
+  queueRespawn(victim, world);
 }
 
 function finishEntity(entity, world) {
@@ -730,6 +762,7 @@ function resolveWallCollisions(world, prevXMap, prevT, currT) {
   const rightHue = world.course.walls?.[1]?.hue ?? 38;
   void prevT;
   for (const entity of world.entities) {
+    if (entity.isRespawning) continue;
     const prevWrappedX = prevXMap.get(entity.id) ?? entity.pos.x;
     const centerX = sampleCourseLaneX(world.course.center, currT, world.finishT);
     const halfW = sampleScalarAt(world.course.halfWidthSamples, currT, world.finishT);
@@ -786,6 +819,7 @@ function energyEventHit(entity, prevWrappedX, prevCoordT, currCoordT, event) {
 }
 
 function collectEnergyEvents(entity, prevWrappedX, world, prevCoordT, currCoordT) {
+  if (entity.isRespawning) return;
   for (const event of world.energyEvents) {
     if (energyEventHit(entity, prevWrappedX, prevCoordT, currCoordT, event)) {
       entity.boostEnergy = Math.min(FUEL_MAX, entity.boostEnergy + event.energy);
@@ -912,6 +946,7 @@ function spawnTrail(entity, world, prevWrappedX, prevCoordT, currCoordT, simNow)
 function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
   const ownerById = new Map(world.entities.map((e) => [e.id, e]));
   for (const victim of world.entities) {
+    if (victim.isRespawning) continue;
     if (currSimT < victim.invulnerableUntil) continue;
     const prevWrappedX = prevXMap.get(victim.id) ?? victim.pos.x;
     const prevCoordT = prevCoordTimeMap.get(victim.id) ?? (victim.coordTime ?? currSimT);
@@ -1041,6 +1076,7 @@ export function stepWorld(world, controls, rawDt) {
   const prevT = world.t;
   world.t += dt;
   const currT = world.t;
+  refreshRespawns(world);
 
   const prevXMap = new Map();
   const prevUnwrappedXMap = new Map();
@@ -1051,26 +1087,33 @@ export function stepWorld(world, controls, rawDt) {
     prevCoordTimeMap.set(e.id, e.coordTime ?? world.t);
   }
 
-  const pAcc = updatePlayerBoostAndSteer(world.player, controls, dt, world);
-  integrateRelativistic(world.player, pAcc, dt, PLAYER_MAX_BETA);
-  if (world.player.vel.x !== 0 && Math.abs(world.player.vel.x) > 2) {
-    world.player.facing = Math.sign(world.player.vel.x);
+  if (!world.player.isRespawning) {
+    const pAcc = updatePlayerBoostAndSteer(world.player, controls, dt, world);
+    integrateRelativistic(world.player, pAcc, dt, PLAYER_MAX_BETA);
+    if (world.player.vel.x !== 0 && Math.abs(world.player.vel.x) > 2) {
+      world.player.facing = Math.sign(world.player.vel.x);
+    }
+    wrapPoint(world.player.pos);
   }
-  wrapPoint(world.player.pos);
 
   const player = world.player;
-  const fleetFollowers = world.bots
+  const playerAvailable = !player.isRespawning;
+  const fleetFollowers = playerAvailable
+    ? world.bots
     .filter((bot) => sameFleet(bot, player))
+    .filter((bot) => !bot.isRespawning)
     .sort((a, b) => {
       const ao = a.fleetJoinOrder ?? Number.POSITIVE_INFINITY;
       const bo = b.fleetJoinOrder ?? Number.POSITIVE_INFINITY;
       if (ao !== bo) return ao - bo;
       return (a.id ?? '').localeCompare(b.id ?? '');
-    });
+    })
+    : [];
   const fleetFollowerSlots = buildFleetFollowerSlots(fleetFollowers.length);
   const followerIdToSlot = new Map(fleetFollowers.map((bot, i) => [bot.id, fleetFollowerSlots[i]]));
 
   for (const bot of world.bots) {
+    if (bot.isRespawning) continue;
     const slot = followerIdToSlot.get(bot.id);
     if (slot) {
       updateFleetFollower(bot, player, slot, dt);
@@ -1083,10 +1126,11 @@ export function stepWorld(world, controls, rawDt) {
   resolveWallCollisions(world, prevXMap, prevT, currT);
 
   for (const e of world.entities) {
+    if (e.isRespawning) continue;
     wrapPoint(e.pos);
     const prevCoordTime = prevCoordTimeMap.get(e.id) ?? (e.coordTime ?? world.t);
     const slot = followerIdToSlot.get(e.id);
-    if (slot) {
+    if (slot && playerAvailable) {
       e.coordTime = (world.player.coordTime ?? world.t) - (world.player.timeDirection ?? 1) * slot.tOffset;
     } else {
       e.coordTime = prevCoordTime + (e.timeDirection ?? 1) * dt;
@@ -1106,6 +1150,7 @@ export function stepWorld(world, controls, rawDt) {
   resolveTailKills(world, prevXMap, prevCoordTimeMap, currT);
 
   for (const e of world.entities) {
+    if (e.isRespawning) continue;
     if (currT >= e.invulnerableUntil) {
       collectEnergyEvents(
         e,
@@ -1167,6 +1212,8 @@ export function getHud(world) {
     playerDeaths: p.deaths,
     playerFleetRescues: p.fleetRescues ?? 0,
     playerFleetSize: fleetSizeFor(p, fleetCounts),
+    isRespawning: !!p.isRespawning,
+    respawnRemaining: p.isRespawning ? Math.max(0, (p.respawnAt ?? world.t) - world.t) : 0,
     timeDirection: p.timeDirection ?? 1,
     teamName: p.team?.name ?? 'SOLO',
     modeName: world.modeName,
