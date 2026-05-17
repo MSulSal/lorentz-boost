@@ -21,7 +21,7 @@ const keyMap = {
 
 const CAMERA_ZOOM_DEFAULT = 0.5;
 const CAMERA_ZOOM_MAX = 1.35;
-const CAMERA_ZOOM_MIN_FALLBACK = 0.0048;
+const CAMERA_ZOOM_MIN_FALLBACK = 0.02;
 const CAMERA_ZOOM_KEY_SPEED = 1.9;
 const RENDER_PIXEL_SCALE = 3;
 const RENDER_MIN_WIDTH = 320;
@@ -719,6 +719,7 @@ export default function App() {
       } else {
         camera.zoom = clamp(camera.zoom, zoomBounds.min, zoomBounds.max);
       }
+      camera.minZoom = zoomBounds.min;
 
       stepWorld(worldRef.current, controls, dt);
 

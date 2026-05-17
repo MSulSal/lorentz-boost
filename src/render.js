@@ -7,12 +7,15 @@ import {
   lengthContractionFactor,
 } from './relativity';
 
-const NOW_Y_RATIO = 0.72;
+const NOW_Y_RATIO = 0.5;
 const PIX = 1;
 const PIXEL_SCALE = 3;
 const MIN_RENDER_WIDTH = 320;
 const MIN_RENDER_HEIGHT = 180;
 const GAME_ASPECT = 16 / 9;
+const TAU = Math.PI * 2;
+const SPHERE_BLEND_MULT = 3.4;
+const SPHERE_BLEND_PAD = 0.06;
 const MAX_FORMATION_VISUAL_SHIPS = 28;
 const FORMATION_BACK_STEP = 8;
 const FORMATION_SIDE_STEP = 6;
@@ -82,12 +85,64 @@ function wrapDelta(a, b, halfSpan) {
   return d;
 }
 
-function projectXT(x, t, camera) {
+function normalizedWrap01(x, arenaX) {
+  const span = arenaX * 2;
+  return (((x + arenaX) % span) + span) % span / span;
+}
+
+function temporalPhase01(t, finishT) {
+  if (!(finishT > 0)) return 0.5;
+  return (((t % finishT) + finishT) % finishT) / finishT;
+}
+
+function projectCylinder(x, t, camera) {
   const dt = t - camera.now;
   const dx = camera.arenaX != null ? wrapDelta(x, camera.originX, camera.arenaX) : (x - camera.originX);
   return {
-    x: camera.width * 0.5 + dx * camera.zoom,
-    y: camera.nowY - dt * C * camera.zoom,
+    x: camera.width * 0.5 + dx * camera.rawZoom,
+    y: camera.nowY - dt * C * camera.rawZoom,
+  };
+}
+
+function projectSphere(x, t, camera) {
+  const u = normalizedWrap01(x, camera.arenaX);
+  const v = temporalPhase01(t, camera.finishT);
+  const lon = (u - 0.5) * TAU;
+  const lat = (v - 0.5) * Math.PI;
+
+  const sx = Math.cos(lat) * Math.cos(lon);
+  const sy = Math.sin(lat);
+  const sz = Math.cos(lat) * Math.sin(lon);
+
+  const cosYaw = Math.cos(camera.sphereYaw);
+  const sinYaw = Math.sin(camera.sphereYaw);
+  const x1 = sx * cosYaw - sz * sinYaw;
+  const z1 = sx * sinYaw + sz * cosYaw;
+
+  const cosPitch = Math.cos(camera.spherePitch);
+  const sinPitch = Math.sin(camera.spherePitch);
+  const y1 = sy * cosPitch - z1 * sinPitch;
+  const z2 = sy * sinPitch + z1 * cosPitch;
+
+  const fish = 1 + 0.2 * Math.max(0, z2) * Math.max(0, z2);
+  const depthScale = 0.72 + 0.28 * ((z2 + 1) * 0.5);
+  const r = camera.sphereRadius * fish * depthScale;
+
+  return {
+    x: camera.width * 0.5 + x1 * r,
+    y: camera.height * 0.5 - y1 * r,
+  };
+}
+
+function projectXT(x, t, camera) {
+  const cyl = projectCylinder(x, t, camera);
+  const blend = camera.sphereBlend ?? 0;
+  if (blend <= 0) return cyl;
+  const sph = projectSphere(x, t, camera);
+  if (blend >= 1) return sph;
+  return {
+    x: cyl.x + (sph.x - cyl.x) * blend,
+    y: cyl.y + (sph.y - cyl.y) * blend,
   };
 }
 
@@ -569,14 +624,34 @@ function drawTangent(ctx, world, camera) {
 }
 
 function makeCamera(displayWidth, displayHeight, world, cameraState) {
+  const rawZoom = cameraState.zoom ?? 0.45;
+  const minZoom = Math.max(1e-4, cameraState.minZoom ?? 0.02);
+  const sphereExit = Math.max(minZoom * SPHERE_BLEND_MULT, minZoom + SPHERE_BLEND_PAD);
+  const sphereBlend = clamp((sphereExit - rawZoom) / Math.max(1e-4, sphereExit - minZoom), 0, 1);
+  const finishT = Math.max(1, world.finishT ?? 1);
+  const playerLon = (normalizedWrap01(world.player?.pos?.x ?? 0, world.arenaX) - 0.5) * TAU;
+  const playerLat = (temporalPhase01(world.player?.coordTime ?? world.t, finishT) - 0.5) * Math.PI;
+  const sphereYaw = Math.PI * 0.5 - playerLon;
+  const spherePitch = playerLat;
+  const sphereRadius = Math.min(displayWidth, displayHeight) * 0.44;
+  const sphereBaseZoom = (sphereRadius * Math.PI) / Math.max(1, world.arenaX);
+  const zoom = rawZoom * (1 - sphereBlend) + sphereBaseZoom * sphereBlend;
+
   return {
     originX: cameraState.x ?? 0,
     arenaX: world.arenaX,
-    zoom: cameraState.zoom ?? 0.45,
+    rawZoom,
+    zoom,
     now: world.player?.coordTime ?? world.t,
     nowY: displayHeight * NOW_Y_RATIO,
     width: displayWidth,
     height: displayHeight,
+    minZoom,
+    finishT,
+    sphereBlend,
+    sphereYaw,
+    spherePitch,
+    sphereRadius,
   };
 }
 
