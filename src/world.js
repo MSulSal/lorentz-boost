@@ -236,12 +236,18 @@ function trailCollisionRadiusFor(victim, trailOwnerId) {
   return collisionRadiusFor(victim);
 }
 
+function syncFleetReserve(entity) {
+  const captures = Math.max(0, Math.floor(entity?.fleetRescues ?? 0));
+  const losses = Math.max(0, Math.floor(entity?.fleetLosses ?? 0));
+  entity.fleetReserve = Math.max(0, captures - losses);
+}
+
 function convertVictimToFleet(victim, killer, world) {
   if (!killer || killer.id === victim.id) return false;
   // Fleet capture is abstract: we only add a ship-count token and visual formation ship.
-  killer.fleetReserve = Math.max(0, (killer.fleetReserve ?? 0) + 1);
   killer.recentCaptureUntil = Math.max(killer.recentCaptureUntil ?? 0, world.t + CAPTURE_SELF_TRAIL_GRACE);
   killer.fleetRescues = (killer.fleetRescues ?? 0) + 1;
+  syncFleetReserve(killer);
   killer.score += CAPTURE_SCORE;
   emitFlash(world, {
     type: 'capture',
@@ -274,8 +280,8 @@ function absorbFleetLoss(entity, world, losses = 1) {
   const reserve = Math.max(0, Math.floor(entity.fleetReserve ?? 0));
   if (reserve <= 0) return totalLosses;
   const absorbed = Math.min(reserve, totalLosses);
-  entity.fleetReserve = reserve - absorbed;
   entity.fleetLosses = (entity.fleetLosses ?? 0) + absorbed;
+  syncFleetReserve(entity);
   entity.hp = Math.max(36, entity.hp ?? 0);
   entity.invulnerableUntil = Math.max(entity.invulnerableUntil ?? 0, world.t + 0.45);
   emitFlash(world, {
