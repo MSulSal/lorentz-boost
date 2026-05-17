@@ -380,7 +380,7 @@ function drawFlashes(ctx, world, camera) {
     if (!visibleOnCanvas(p, camera, 120)) continue;
     let hue = f.hue ?? 200;
     if (f.type === 'tail-kill') hue += 25;
-    if (f.type === 'rescue') hue = 168;
+    if (f.type === 'rescue' || f.type === 'capture') hue = 168;
     if (f.type === 'wall-hit' || f.type === 'wall-kill') hue = 28;
     if (f.type === 'island-kill') hue = 332;
     if (f.type === 'pole-flip') hue = 274;

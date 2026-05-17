@@ -453,7 +453,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div className="meter-row"><span>placement</span><b>{hud.placement ?? '--'}</b></div>
         <div className="meter-row"><span>mode</span><b>DEATHMATCH</b></div>
         <div className="meter-row"><span>kills / deaths</span><b>{hud.playerKills} / {hud.playerDeaths}</b></div>
-        <div className="meter-row"><span>fleet rescues</span><b>{hud.playerFleetRescues ?? 0}</b></div>
+        <div className="meter-row"><span>fleet captures</span><b>{hud.playerFleetCaptures ?? 0}</b></div>
         <div className="meter-row"><span>fleet reserve</span><b>{hud.playerFleetReserve ?? 0}</b></div>
         <div className="meter-row"><span>fleet size</span><b>{hud.playerFleetSize ?? 1}</b></div>
         <div className="meter-row"><span>team flag</span><b>{hud.teamName}</b></div>
@@ -468,7 +468,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div><kbd>Space</kbd> time reversal (x-axis reflection: face into past direction)</div>
         <div><kbd>Pole wrap</kbd> crossing temporal seam auto-reflects your time direction</div>
         <div><kbd>Combat</kbd> all worldlines kill, including your own (paradox loops)</div>
-        <div><kbd>Fleet</kbd> tail-kill opponents to add ships to your head formation reserve</div>
+        <div><kbd>Fleet</kbd> tail-kill opponents to capture a ship into your head formation reserve</div>
         <div><kbd>Formation</kbd> reserve ships render in triangular lead formation and expand hitbox</div>
         <div><kbd>Drops</kbd> events + dead-worldline fragments extend your lethal worldline and add speed</div>
         <div><kbd>Respawn</kbd> cooldown only triggers on full fleet wipe</div>

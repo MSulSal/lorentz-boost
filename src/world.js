@@ -61,11 +61,10 @@ const RESPAWN_BACKTRACK = 260;
 const RESPAWN_COOLDOWN_SECONDS = 2.8;
 const KILL_SCORE = 260;
 const DEATH_SCORE_PENALTY = 190;
-const RESCUE_SCORE = 120;
+const CAPTURE_SCORE = 120;
 const FLEET_FORMATION_SPACING = 14;
 const FLEET_HITBOX_SCALE = 0.94;
 const FLEET_HITBOX_MAX_BONUS = 52;
-const RESCUE_INVULNERABLE_SECONDS = 0.42;
 const EVENT_SPEED_BOOST_BASE = 6;
 const EVENT_SPEED_BOOST_PER_ENERGY = 0.52;
 const POLE_FLIP_COOLDOWN = 0.72;
@@ -232,15 +231,12 @@ function collisionRadiusFor(entity) {
 
 function convertVictimToFleet(victim, killer, world) {
   if (!killer || killer.id === victim.id) return false;
-  if (victim.kind !== 'bot') return false;
+  // Fleet capture is abstract: we only add a ship-count token and visual formation ship.
   killer.fleetReserve = Math.max(0, (killer.fleetReserve ?? 0) + 1);
-  killer.hp = Math.min(HP_MAX, (killer.hp ?? HP_MAX) + 22);
-  killer.boostEnergy = Math.min(FUEL_MAX, (killer.boostEnergy ?? 0) + 20);
-  killer.invulnerableUntil = Math.max(killer.invulnerableUntil ?? 0, world.t + RESCUE_INVULNERABLE_SECONDS);
   killer.fleetRescues = (killer.fleetRescues ?? 0) + 1;
-  killer.score += RESCUE_SCORE;
+  killer.score += CAPTURE_SCORE;
   emitFlash(world, {
-    type: 'rescue',
+    type: 'capture',
     x: victim.pos.x,
     t: world.t,
     hue: killer.hue,
@@ -1224,7 +1220,7 @@ export function getHud(world) {
     winnerName: world.winnerName,
     playerKills: p.kills,
     playerDeaths: p.deaths,
-    playerFleetRescues: p.fleetRescues ?? 0,
+    playerFleetCaptures: p.fleetRescues ?? 0,
     playerFleetReserve: Math.max(0, Math.floor(p.fleetReserve ?? 0)),
     playerFleetSize: fleetSizeFor(p),
     isRespawning: !!p.isRespawning,
