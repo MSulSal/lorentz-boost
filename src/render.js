@@ -12,6 +12,7 @@ const PIX = 1;
 const PIXEL_SCALE = 3;
 const MIN_RENDER_WIDTH = 320;
 const MIN_RENDER_HEIGHT = 180;
+const GAME_ASPECT = 16 / 9;
 const MAX_FORMATION_VISUAL_SHIPS = 28;
 const FORMATION_BACK_STEP = 8;
 const FORMATION_SIDE_STEP = 6;
@@ -594,9 +595,31 @@ function resizeDisplayCanvas(canvas) {
   return { ctx, displayWidth, displayHeight };
 }
 
-function ensurePixelBuffer(displayWidth, displayHeight) {
-  const targetWidth = Math.max(MIN_RENDER_WIDTH, Math.floor(displayWidth / PIXEL_SCALE));
-  const targetHeight = Math.max(MIN_RENDER_HEIGHT, Math.floor(displayHeight / PIXEL_SCALE));
+function fitGameRect(displayWidth, displayHeight) {
+  const viewAspect = displayWidth / Math.max(1, displayHeight);
+  let width = displayWidth;
+  let height = displayHeight;
+  if (viewAspect > GAME_ASPECT) {
+    width = height * GAME_ASPECT;
+  } else {
+    height = width / GAME_ASPECT;
+  }
+  return {
+    x: (displayWidth - width) * 0.5,
+    y: (displayHeight - height) * 0.5,
+    width,
+    height,
+  };
+}
+
+function ensurePixelBuffer(fitWidth, fitHeight) {
+  let targetWidth = Math.max(MIN_RENDER_WIDTH, Math.floor(fitWidth / PIXEL_SCALE));
+  let targetHeight = Math.max(MIN_RENDER_HEIGHT, Math.round(targetWidth / GAME_ASPECT));
+  const heightFromFit = Math.max(MIN_RENDER_HEIGHT, Math.floor(fitHeight / PIXEL_SCALE));
+  if (heightFromFit > targetHeight) {
+    targetHeight = heightFromFit;
+    targetWidth = Math.max(MIN_RENDER_WIDTH, Math.round(targetHeight * GAME_ASPECT));
+  }
 
   if (!pixelCanvas) {
     pixelCanvas = document.createElement('canvas');
@@ -640,7 +663,8 @@ function buildRenderQueue(world) {
 
 export function renderWorld(canvas, world, cameraState, opts) {
   const display = resizeDisplayCanvas(canvas);
-  const pixel = ensurePixelBuffer(display.displayWidth, display.displayHeight);
+  const fit = fitGameRect(display.displayWidth, display.displayHeight);
+  const pixel = ensurePixelBuffer(fit.width, fit.height);
   const camera = makeCamera(pixel.width, pixel.height, world, cameraState);
   const ctx = pixel.ctx;
 
@@ -665,5 +689,17 @@ export function renderWorld(canvas, world, cameraState, opts) {
   drawTangent(ctx, world, camera);
 
   display.ctx.imageSmoothingEnabled = false;
-  display.ctx.drawImage(pixelCanvas, 0, 0, pixel.width, pixel.height, 0, 0, display.displayWidth, display.displayHeight);
+  display.ctx.fillStyle = '#050814';
+  display.ctx.fillRect(0, 0, display.displayWidth, display.displayHeight);
+  display.ctx.drawImage(
+    pixelCanvas,
+    0,
+    0,
+    pixel.width,
+    pixel.height,
+    Math.round(fit.x),
+    Math.round(fit.y),
+    Math.round(fit.width),
+    Math.round(fit.height),
+  );
 }

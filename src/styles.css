@@ -228,7 +228,7 @@ kbd {
 .touch-controls {
   position: absolute;
   left: 50%;
-  bottom: max(10px, env(safe-area-inset-bottom));
+  bottom: max(22px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 8;
   display: none;
@@ -268,12 +268,12 @@ kbd {
   filter: drop-shadow(0 0 10px rgba(132, 228, 255, 0.45));
 }
 
-.rocket-nw {
-  transform: rotate(-34deg);
+.rocket-left {
+  transform: scaleX(-1) rotate(30deg);
 }
 
-.rocket-ne {
-  transform: rotate(34deg);
+.rocket-right {
+  transform: rotate(30deg);
 }
 
 .rocket-flip {
@@ -454,12 +454,24 @@ kbd {
 }
 
 @media (hover: none) and (pointer: coarse) {
+  .brand-banner {
+    top: calc(6px + env(safe-area-inset-top));
+    padding: 4px 10px 5px;
+    min-width: min(360px, calc(100vw - 14px));
+  }
+  .pixel-logo {
+    font-size: clamp(13px, 4.3vw, 18px);
+    letter-spacing: 0.09em;
+  }
+  .brand-sub {
+    display: none;
+  }
   .touch-controls {
     display: flex;
-    bottom: calc(12px + env(safe-area-inset-bottom));
+    bottom: calc(28px + env(safe-area-inset-bottom));
   }
   .minimap-overlay {
-    top: calc(8px + env(safe-area-inset-top));
+    top: calc(62px + env(safe-area-inset-top));
     left: 8px;
     right: auto;
     bottom: auto;
@@ -480,6 +492,7 @@ kbd {
 @media (hover: none) and (pointer: coarse) and (orientation: landscape) {
   .touch-controls {
     gap: 10px;
+    bottom: calc(18px + env(safe-area-inset-bottom));
   }
   .touch-btn {
     min-width: 62px;
@@ -493,6 +506,7 @@ kbd {
   }
   .minimap-overlay {
     width: min(150px, 30vw);
+    top: calc(54px + env(safe-area-inset-top));
   }
 }
 

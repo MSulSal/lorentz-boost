@@ -26,14 +26,31 @@ const CAMERA_ZOOM_KEY_SPEED = 1.9;
 const RENDER_PIXEL_SCALE = 3;
 const RENDER_MIN_WIDTH = 320;
 const RENDER_MIN_HEIGHT = 180;
+const GAME_ASPECT = 16 / 9;
 const PINCH_DISTANCE_EPS = 6;
 
 function renderBufferSize(canvas) {
   const displayWidth = canvas?.clientWidth ?? window.innerWidth ?? RENDER_MIN_WIDTH;
   const displayHeight = canvas?.clientHeight ?? window.innerHeight ?? RENDER_MIN_HEIGHT;
+  const viewAspect = displayWidth / Math.max(1, displayHeight);
+  let fitWidth = displayWidth;
+  let fitHeight = displayHeight;
+  if (viewAspect > GAME_ASPECT) {
+    fitWidth = fitHeight * GAME_ASPECT;
+  } else {
+    fitHeight = fitWidth / GAME_ASPECT;
+  }
+
+  let width = Math.max(RENDER_MIN_WIDTH, Math.floor(fitWidth / RENDER_PIXEL_SCALE));
+  let height = Math.max(RENDER_MIN_HEIGHT, Math.round(width / GAME_ASPECT));
+  const heightFromFit = Math.max(RENDER_MIN_HEIGHT, Math.floor(fitHeight / RENDER_PIXEL_SCALE));
+  if (heightFromFit > height) {
+    height = heightFromFit;
+    width = Math.max(RENDER_MIN_WIDTH, Math.round(height * GAME_ASPECT));
+  }
   return {
-    width: Math.max(RENDER_MIN_WIDTH, Math.floor(displayWidth / RENDER_PIXEL_SCALE)),
-    height: Math.max(RENDER_MIN_HEIGHT, Math.floor(displayHeight / RENDER_PIXEL_SCALE)),
+    width,
+    height,
   };
 }
 
@@ -446,13 +463,13 @@ function TouchControls({ touchRef }) {
   return (
     <div className="touch-controls" aria-hidden="true">
       <button type="button" className="touch-btn steer left" aria-label="Steer left boost" {...left}>
-        <span className="touch-icon rocket-nw" aria-hidden="true">🚀</span>
+        <span className="touch-icon rocket-left" aria-hidden="true">&#x1F680;</span>
       </button>
       <button type="button" className="touch-btn reverse" aria-label="Flip time direction" {...reverse}>
-        <span className="touch-icon rocket-flip" aria-hidden="true">🚀↺</span>
+        <span className="touch-icon rocket-flip" aria-hidden="true">&#x1F680;&#x21BB;</span>
       </button>
       <button type="button" className="touch-btn steer right" aria-label="Steer right boost" {...right}>
-        <span className="touch-icon rocket-ne" aria-hidden="true">🚀</span>
+        <span className="touch-icon rocket-right" aria-hidden="true">&#x1F680;</span>
       </button>
     </div>
   );
@@ -770,3 +787,4 @@ export default function App() {
     </main>
   );
 }
+
