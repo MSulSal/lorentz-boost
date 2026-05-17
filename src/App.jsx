@@ -515,6 +515,7 @@ export default function App() {
   const spaceLatch = useRef(false);
   const [worldVersion, setWorldVersion] = useState(0);
   const [hudOpen, setHudOpen] = useState(false);
+  const [audioOpen, setAudioOpen] = useState(false);
   const [opts, setOpts] = useState({
     finiteLight: true,
     lengthContraction: true,
@@ -619,14 +620,22 @@ export default function App() {
       <BrandBanner />
       <LiveLeaderboard world={hudWorld} />
       <MinimapOverlay world={hudWorld} />
-      <AudioDock audioMix={audioMix} setAudioMix={setAudioMix} />
+      {audioOpen && <AudioDock audioMix={audioMix} setAudioMix={setAudioMix} />}
       <TouchControls touchRef={touchRef} />
-      <button
-        className={`hud-toggle ${hudOpen ? 'open' : ''}`}
-        onClick={() => setHudOpen((v) => !v)}
-      >
-        {hudOpen ? 'Hide HUD' : 'Show HUD'}
-      </button>
+      <div className="top-left-controls">
+        <button
+          className={`hud-toggle ${hudOpen ? 'open' : ''}`}
+          onClick={() => setHudOpen((v) => !v)}
+        >
+          {hudOpen ? 'Hide HUD' : 'Show HUD'}
+        </button>
+        <button
+          className={`audio-toggle ${audioOpen ? 'open' : ''}`}
+          onClick={() => setAudioOpen((v) => !v)}
+        >
+          {audioOpen ? 'Hide Audio' : 'Audio'}
+        </button>
+      </div>
       {hudOpen && (
         <Hud
           world={hudWorld}

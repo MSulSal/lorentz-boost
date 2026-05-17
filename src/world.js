@@ -246,17 +246,10 @@ function convertVictimToFleet(victim, killer, world) {
 
 function consumeFleetReserve(entity, world) {
   if ((entity.fleetReserve ?? 0) <= 0) return false;
-  const heading = Math.sign(entity.vel.x) || entity.facing || 1;
   entity.fleetReserve = Math.max(0, (entity.fleetReserve ?? 0) - 1);
-  entity.progress = Math.max(0, (entity.progress ?? 0) - RESPAWN_BACKTRACK * 0.28);
-  entity.unwrappedX = (entity.unwrappedX ?? entity.pos.x) - heading * RESPAWN_BACKTRACK * 0.32;
-  entity.pos = v(wrapX(entity.unwrappedX), 0);
-  entity.vel = v(heading * 30, 0);
-  entity.hp = Math.max(34, (entity.hp ?? HP_MAX) * 0.62);
-  entity.boostEnergy = Math.max(FUEL_MAX * 0.38, entity.boostEnergy ?? 0);
-  entity.invulnerableUntil = Math.max(entity.invulnerableUntil ?? 0, world.t + INVULNERABLE_SECONDS * 0.9);
-  entity.history = [snapshot(entity, world.t)];
-  entity.lastTrailAt = world.t;
+  // Fleet loss is now a pure ship-count decrement, not a pseudo-respawn reset.
+  entity.hp = Math.max(36, entity.hp ?? 0);
+  entity.invulnerableUntil = Math.max(entity.invulnerableUntil ?? 0, world.t + 0.45);
   emitFlash(world, {
     type: 'fleet-loss',
     x: entity.pos.x,
@@ -614,14 +607,15 @@ function refreshRespawns(world) {
   }
 }
 
-function killEntity(victim, killer, world, cause, options = {}) {
-  const skipCapture = !!options.skipCapture;
+function killEntity(victim, killer, world, cause) {
   if (killer && killer.id !== victim.id) {
     killer.kills += 1;
     killer.score += KILL_SCORE;
-    if (!skipCapture) {
-      convertVictimToFleet(victim, killer, world);
-    }
+    convertVictimToFleet(victim, killer, world);
+  }
+
+  if (consumeFleetReserve(victim, world)) {
+    return;
   }
 
   victim.deaths += 1;
@@ -640,8 +634,6 @@ function killEntity(victim, killer, world, cause, options = {}) {
     hue: killer?.hue ?? victim.hue,
   });
   scatterDeadWorldlineDrops(victim, world);
-  if (consumeFleetReserve(victim, world)) return;
-
   queueRespawn(victim, world);
 }
 
@@ -833,8 +825,10 @@ function energyEventHit(entity, prevWrappedX, prevCoordT, currCoordT, event) {
 function applyEnergySpeedBoost(entity, event) {
   const maxBeta = entity.kind === 'player' ? PLAYER_MAX_BETA : BOT_MAX_BETA;
   const heading = Math.sign(entity.vel.x) || entity.facing || 1;
+  const speed = Math.abs(entity.vel.x);
   const gain = EVENT_SPEED_BOOST_BASE + event.energy * EVENT_SPEED_BOOST_PER_ENERGY;
-  entity.vel = limitVelocity(v(entity.vel.x + heading * gain, 0), maxBeta);
+  const boostedSpeed = speed + gain;
+  entity.vel = limitVelocity(v(heading * boostedSpeed, 0), maxBeta);
 }
 
 function collectEnergyEvents(entity, prevWrappedX, world, prevCoordT, currCoordT) {
@@ -1040,22 +1034,71 @@ function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
     if (dead) continue;
   }
 
-  // Apply all fleet captures for this frame before consuming ships from deaths.
+  const lossesByVictim = new Map();
+  const firstKillerByVictim = new Map();
+  const killCreditsByKiller = new Map();
   const capturedVictimIds = new Set();
-  for (const pending of pendingKills) {
-    const victim = ownerById.get(pending.victimId);
-    const killer = ownerById.get(pending.killerId);
-    if (!victim || !killer || killer.id === victim.id) continue;
-    if (capturedVictimIds.has(victim.id)) continue;
-    convertVictimToFleet(victim, killer, world);
-    capturedVictimIds.add(victim.id);
-  }
 
+  // 1) Fleet capture pass (once per victim) + killer credits.
   for (const pending of pendingKills) {
     const victim = ownerById.get(pending.victimId);
     if (!victim || !isEntityActive(victim)) continue;
-    const killer = ownerById.get(pending.killerId) ?? null;
-    killEntity(victim, killer, world, 'tail', { skipCapture: true });
+    const killer = ownerById.get(pending.killerId);
+    lossesByVictim.set(victim.id, (lossesByVictim.get(victim.id) ?? 0) + 1);
+    if (killer && killer.id !== victim.id) {
+      if (!firstKillerByVictim.has(victim.id)) {
+        firstKillerByVictim.set(victim.id, killer.id);
+      }
+      killCreditsByKiller.set(killer.id, (killCreditsByKiller.get(killer.id) ?? 0) + 1);
+      if (!capturedVictimIds.has(victim.id)) {
+        convertVictimToFleet(victim, killer, world);
+        capturedVictimIds.add(victim.id);
+      }
+    }
+  }
+
+  // 2) Apply kill credits.
+  for (const [killerId, count] of killCreditsByKiller.entries()) {
+    const killer = ownerById.get(killerId);
+    if (!killer || count <= 0) continue;
+    killer.kills += count;
+    killer.score += KILL_SCORE * count;
+  }
+
+  // 3) Resolve fleet losses. Only full wipe counts as a death.
+  for (const [victimId, losses] of lossesByVictim.entries()) {
+    const victim = ownerById.get(victimId);
+    if (!victim || !isEntityActive(victim) || losses <= 0) continue;
+    let remainingLosses = losses;
+    const reserve = Math.max(0, Math.floor(victim.fleetReserve ?? 0));
+    if (reserve > 0) {
+      const absorbed = Math.min(reserve, remainingLosses);
+      victim.fleetReserve = Math.max(0, reserve - absorbed);
+      victim.hp = Math.max(36, victim.hp ?? 0);
+      victim.invulnerableUntil = Math.max(victim.invulnerableUntil ?? 0, world.t + 0.45);
+      emitFlash(world, {
+        type: 'fleet-loss',
+        x: victim.pos.x,
+        t: world.t,
+        hue: victim.hue,
+      });
+      remainingLosses -= absorbed;
+    }
+
+    if (remainingLosses <= 0) continue;
+
+    const killerId = firstKillerByVictim.get(victim.id);
+    const killer = killerId ? (ownerById.get(killerId) ?? null) : null;
+    victim.deaths += 1;
+    victim.score = Math.max(0, victim.score - DEATH_SCORE_PENALTY);
+    emitFlash(world, {
+      type: 'tail-kill',
+      x: victim.pos.x,
+      t: world.t,
+      hue: killer?.hue ?? victim.hue,
+    });
+    scatterDeadWorldlineDrops(victim, world);
+    queueRespawn(victim, world);
   }
 }
 

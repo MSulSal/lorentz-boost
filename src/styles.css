@@ -76,10 +76,18 @@ html, body {
   z-index: 6;
 }
 
-.hud-toggle {
+.top-left-controls {
   position: absolute;
   top: 16px;
   left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 7;
+}
+
+.hud-toggle,
+.audio-toggle {
   z-index: 6;
   border: 1px solid rgba(130, 232, 255, 0.32);
   background: rgba(8, 22, 38, 0.78);
@@ -93,7 +101,8 @@ html, body {
   backdrop-filter: blur(10px);
 }
 
-.hud-toggle.open {
+.hud-toggle.open,
+.audio-toggle.open {
   border-color: rgba(255, 190, 120, 0.42);
   background: rgba(38, 22, 8, 0.8);
 }
@@ -201,8 +210,8 @@ kbd {
 
 .audio-dock {
   position: absolute;
-  left: 12px;
-  bottom: 12px;
+  left: 390px;
+  top: 62px;
   width: min(270px, calc(100vw - 24px));
   z-index: 7;
   padding: 10px 12px;
@@ -381,14 +390,22 @@ kbd {
     transform: none;
   }
   .hud-toggle {
-    top: 8px;
-    left: 8px;
     padding: 6px 10px;
     font-size: 11px;
   }
-  .audio-dock {
+  .audio-toggle {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+  .top-left-controls {
+    top: 8px;
     left: 8px;
-    bottom: 8px;
+    gap: 6px;
+  }
+  .audio-dock {
+    left: auto;
+    right: 8px;
+    top: 54px;
     width: min(196px, calc(100vw - 16px));
     padding: 8px 9px;
   }
@@ -408,12 +425,12 @@ kbd {
     display: flex;
   }
   .audio-dock {
-    bottom: calc(82px + env(safe-area-inset-bottom));
+    top: calc(54px + env(safe-area-inset-top));
   }
   .minimap-overlay {
     bottom: calc(82px + env(safe-area-inset-bottom));
   }
-  .hud-toggle {
+  .top-left-controls {
     top: calc(8px + env(safe-area-inset-top));
   }
 }
