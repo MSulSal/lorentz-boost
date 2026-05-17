@@ -241,10 +241,10 @@ function fleetSizeFor(entity, fleetCounts) {
 }
 
 function convertVictimToFleet(victim, killer, world) {
-  if (!killer || killer.id === victim.id) return;
-  if (victim.kind !== 'bot') return;
-  if (sameFleet(victim, killer)) return;
-  if (!killer.team) return;
+  if (!killer || killer.id === victim.id) return false;
+  if (victim.kind !== 'bot') return false;
+  if (sameFleet(victim, killer)) return false;
+  if (!killer.team) return false;
   applyTeam(victim, killer.team);
   victim.fleetJoinOrder = (world.nextFleetJoinOrder = (world.nextFleetJoinOrder ?? 0) + 1);
   killer.fleetRescues = (killer.fleetRescues ?? 0) + 1;
@@ -255,6 +255,7 @@ function convertVictimToFleet(victim, killer, world) {
     t: world.t,
     hue: killer.hue,
   });
+  return true;
 }
 
 function retireEntity(entity, world, flashType = 'fleet-loss') {
@@ -325,6 +326,37 @@ function consumeFleetShipForPlayer(world, replacement) {
     hue: player.hue + 28,
   });
   return true;
+}
+
+function activateConvertedFollower(victim, leader, world) {
+  const lead = leader ?? world.player ?? victim;
+  const leadX = lead.pos?.x ?? victim.pos.x;
+  const leadVel = lead.vel?.x ?? victim.vel.x;
+  const dir = Math.sign(leadVel || lead.facing || victim.facing || 1);
+  const xOffset = FLEET_SLOT_X_SPACING * 0.62 * dir;
+  const x = wrapX(leadX + xOffset);
+  const leadUnwrapped = lead.unwrappedX ?? leadX;
+
+  victim.isRetired = false;
+  victim.isRespawning = false;
+  victim.respawnAt = 0;
+  victim.pos = v(x, 0);
+  victim.unwrappedX = unwrapNear(x, leadUnwrapped + xOffset);
+  victim.vel = v(Math.abs(leadVel) > 8 ? leadVel * 0.92 : dir * 28, 0);
+  victim.facing = Math.sign(victim.vel.x) || dir;
+  victim.timeDirection = lead.timeDirection ?? victim.timeDirection ?? 1;
+  victim.coordTime = lead.coordTime ?? world.t;
+  victim.hp = Math.max(58, victim.hp ?? 0);
+  victim.boostEnergy = Math.max(FUEL_MAX * 0.46, victim.boostEnergy ?? 0);
+  victim.invulnerableUntil = Math.max(victim.invulnerableUntil ?? 0, world.t + 0.82);
+  victim.history = [snapshot(victim, world.t)];
+  victim.lastTrailAt = world.t;
+  emitFlash(world, {
+    type: 'fleet-join',
+    x,
+    t: world.t,
+    hue: victim.hue,
+  });
 }
 
 function interpolateXUnwrapped(prevX, currX, prevT, currT, t) {
@@ -677,11 +709,21 @@ function refreshRespawns(world) {
 }
 
 function killEntity(victim, killer, world, cause) {
+  const victimTeamBefore = victim.team?.id ?? null;
+  const playerTeamId = world.player?.team?.id ?? null;
+  const killerOnPlayerFleet = !!killer && !!playerTeamId && sameFleet(killer, world.player);
+  let converted = false;
+
   if (killer && killer.id !== victim.id) {
     killer.kills += 1;
     killer.score += KILL_SCORE;
-    convertVictimToFleet(victim, killer, world);
+    converted = convertVictimToFleet(victim, killer, world);
+    if (converted && killerOnPlayerFleet) {
+      activateConvertedFollower(victim, world.player, world);
+      return;
+    }
   }
+
   victim.deaths += 1;
   victim.score = Math.max(0, victim.score - DEATH_SCORE_PENALTY);
   const flashType = cause === 'tail'
@@ -698,9 +740,7 @@ function killEntity(victim, killer, world, cause) {
     hue: killer?.hue ?? victim.hue,
   });
   scatterDeadWorldlineDrops(victim, world);
-
-  const playerTeamId = world.player?.team?.id;
-  const victimOnPlayerFleet = !!playerTeamId && victim.team?.id === playerTeamId;
+  const victimOnPlayerFleet = !!playerTeamId && victimTeamBefore === playerTeamId;
   const victimIsPlayer = victim.id === world.player?.id;
 
   if (victimOnPlayerFleet) {
