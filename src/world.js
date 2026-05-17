@@ -244,10 +244,29 @@ function convertVictimToFleet(victim, killer, world) {
   return true;
 }
 
-function consumeFleetReserve(entity, world) {
-  if ((entity.fleetReserve ?? 0) <= 0) return false;
-  entity.fleetReserve = Math.max(0, (entity.fleetReserve ?? 0) - 1);
-  // Fleet loss is now a pure ship-count decrement, not a pseudo-respawn reset.
+function addKillScore(killer, count = 1) {
+  if (!killer) return;
+  if (count <= 0) return;
+  killer.kills += count;
+  killer.score += KILL_SCORE * count;
+}
+
+function awardKillCredit(killer, victim, world, count = 1) {
+  if (!killer || killer.id === victim.id) return;
+  if (count <= 0) return;
+  addKillScore(killer, count);
+  if (count === 1) {
+    convertVictimToFleet(victim, killer, world);
+  }
+}
+
+function absorbFleetLoss(entity, world, losses = 1) {
+  const totalLosses = Math.max(0, Math.floor(losses));
+  if (totalLosses <= 0) return 0;
+  const reserve = Math.max(0, Math.floor(entity.fleetReserve ?? 0));
+  if (reserve <= 0) return totalLosses;
+  const absorbed = Math.min(reserve, totalLosses);
+  entity.fleetReserve = reserve - absorbed;
   entity.hp = Math.max(36, entity.hp ?? 0);
   entity.invulnerableUntil = Math.max(entity.invulnerableUntil ?? 0, world.t + 0.45);
   emitFlash(world, {
@@ -256,7 +275,27 @@ function consumeFleetReserve(entity, world) {
     t: world.t,
     hue: entity.hue,
   });
-  return true;
+  return totalLosses - absorbed;
+}
+
+function applyFullDeath(victim, killer, world, cause) {
+  victim.deaths += 1;
+  victim.score = Math.max(0, victim.score - DEATH_SCORE_PENALTY);
+  const flashType = cause === 'tail'
+    ? 'tail-kill'
+    : cause === 'wall'
+      ? 'wall-kill'
+      : cause === 'island'
+        ? 'island-kill'
+        : 'collision-kill';
+  emitFlash(world, {
+    type: flashType,
+    x: victim.pos.x,
+    t: world.t,
+    hue: killer?.hue ?? victim.hue,
+  });
+  scatterDeadWorldlineDrops(victim, world);
+  queueRespawn(victim, world);
 }
 
 function interpolateXUnwrapped(prevX, currX, prevT, currT, t) {
@@ -608,33 +647,10 @@ function refreshRespawns(world) {
 }
 
 function killEntity(victim, killer, world, cause) {
-  if (killer && killer.id !== victim.id) {
-    killer.kills += 1;
-    killer.score += KILL_SCORE;
-    convertVictimToFleet(victim, killer, world);
-  }
-
-  if (consumeFleetReserve(victim, world)) {
-    return;
-  }
-
-  victim.deaths += 1;
-  victim.score = Math.max(0, victim.score - DEATH_SCORE_PENALTY);
-  const flashType = cause === 'tail'
-    ? 'tail-kill'
-    : cause === 'wall'
-      ? 'wall-kill'
-      : cause === 'island'
-        ? 'island-kill'
-        : 'collision-kill';
-  emitFlash(world, {
-    type: flashType,
-    x: victim.pos.x,
-    t: world.t,
-    hue: killer?.hue ?? victim.hue,
-  });
-  scatterDeadWorldlineDrops(victim, world);
-  queueRespawn(victim, world);
+  awardKillCredit(killer, victim, world, 1);
+  const remainingLosses = absorbFleetLoss(victim, world, 1);
+  if (remainingLosses <= 0) return;
+  applyFullDeath(victim, killer, world, cause);
 }
 
 function finishEntity(entity, world) {
@@ -994,7 +1010,7 @@ function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
     const currCoordT = victim.coordTime ?? currSimT;
     const prevUnwrappedX = prevWrappedX;
     const currUnwrappedX = unwrapFromPrev(victim.pos.x, prevUnwrappedX);
-    let dead = false;
+    let bestHit = null;
 
     for (const trail of world.trails) {
       if (currSimT < trail.armT || currSimT > trail.expireT) continue;
@@ -1023,15 +1039,28 @@ function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
 
       const hitRadius = collisionRadiusFor(victim);
       if (minDistance <= hitRadius + trail.radius + 2.5) {
-        pendingKills.push({
-          victimId: victim.id,
-          killerId: trail.ownerId ?? null,
-        });
-        dead = true;
-        break;
+        const killerId = trail.ownerId ?? null;
+        const isSelf = killerId === victim.id;
+        if (!bestHit) {
+          bestHit = { killerId, isSelf, dist: minDistance };
+          continue;
+        }
+        const bestIsSelf = bestHit.isSelf;
+        if (bestIsSelf && !isSelf) {
+          bestHit = { killerId, isSelf, dist: minDistance };
+          continue;
+        }
+        if (bestIsSelf === isSelf && minDistance < bestHit.dist) {
+          bestHit = { killerId, isSelf, dist: minDistance };
+        }
       }
     }
-    if (dead) continue;
+    if (bestHit) {
+      pendingKills.push({
+        victimId: victim.id,
+        killerId: bestHit.killerId,
+      });
+    }
   }
 
   const lossesByVictim = new Map();
@@ -1057,48 +1086,23 @@ function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
     }
   }
 
-  // 2) Apply kill credits.
+  // 2) Apply aggregated kill credits.
   for (const [killerId, count] of killCreditsByKiller.entries()) {
     const killer = ownerById.get(killerId);
-    if (!killer || count <= 0) continue;
-    killer.kills += count;
-    killer.score += KILL_SCORE * count;
+    if (!killer) continue;
+    addKillScore(killer, count);
   }
 
-  // 3) Resolve fleet losses. Only full wipe counts as a death.
+  // 3) Resolve fleet losses. Only unresolved losses count as a true death.
   for (const [victimId, losses] of lossesByVictim.entries()) {
     const victim = ownerById.get(victimId);
     if (!victim || !isEntityActive(victim) || losses <= 0) continue;
-    let remainingLosses = losses;
-    const reserve = Math.max(0, Math.floor(victim.fleetReserve ?? 0));
-    if (reserve > 0) {
-      const absorbed = Math.min(reserve, remainingLosses);
-      victim.fleetReserve = Math.max(0, reserve - absorbed);
-      victim.hp = Math.max(36, victim.hp ?? 0);
-      victim.invulnerableUntil = Math.max(victim.invulnerableUntil ?? 0, world.t + 0.45);
-      emitFlash(world, {
-        type: 'fleet-loss',
-        x: victim.pos.x,
-        t: world.t,
-        hue: victim.hue,
-      });
-      remainingLosses -= absorbed;
-    }
-
+    const remainingLosses = absorbFleetLoss(victim, world, losses);
     if (remainingLosses <= 0) continue;
 
     const killerId = firstKillerByVictim.get(victim.id);
     const killer = killerId ? (ownerById.get(killerId) ?? null) : null;
-    victim.deaths += 1;
-    victim.score = Math.max(0, victim.score - DEATH_SCORE_PENALTY);
-    emitFlash(world, {
-      type: 'tail-kill',
-      x: victim.pos.x,
-      t: world.t,
-      hue: killer?.hue ?? victim.hue,
-    });
-    scatterDeadWorldlineDrops(victim, world);
-    queueRespawn(victim, world);
+    applyFullDeath(victim, killer, world, 'tail');
   }
 }
 
