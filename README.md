@@ -16,6 +16,7 @@
 - Minkowski-sphere style wrap/phase mapping
 - No gravity wells (removed for cleaner motion and readability)
 - Doppler-shifted rocket audio + CC0 retro-space background music
+- In-game audio sliders for master/music/thruster mix
 - Relativistic visual treatment
 
 ## Controls

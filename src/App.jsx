@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, clamp } from './relativity';
 import { createWorld, cyclePlayerTeam, getHud, rankEntities, stepWorld } from './world';
 import { renderWorld } from './render';
-import { createAudioSystem, destroyAudio, startAudio, updateAudio } from './audio';
+import { createAudioSystem, destroyAudio, setAudioMix as applyAudioMix, startAudio, updateAudio } from './audio';
 import './styles.css';
 
 const keyMap = {
@@ -338,6 +338,60 @@ function LiveLeaderboard({ world }) {
   );
 }
 
+function BrandBanner() {
+  return (
+    <header className="brand-banner" aria-label="Game title">
+      <div className="pixel-logo">LORENTZ BOOST</div>
+      <div className="brand-sub">relativistic fleet arena</div>
+    </header>
+  );
+}
+
+function AudioDock({ audioMix, setAudioMix }) {
+  const pct = (v) => Math.round((v ?? 1) * 100);
+  return (
+    <details className="audio-dock panel" open>
+      <summary>Audio</summary>
+      <div className="audio-row">
+        <span>master</span>
+        <b>{pct(audioMix.master)}%</b>
+      </div>
+      <input
+        type="range"
+        min="0"
+        max="140"
+        step="1"
+        value={pct(audioMix.master)}
+        onChange={(e) => setAudioMix((m) => ({ ...m, master: Number(e.target.value) / 100 }))}
+      />
+      <div className="audio-row">
+        <span>music</span>
+        <b>{pct(audioMix.music)}%</b>
+      </div>
+      <input
+        type="range"
+        min="0"
+        max="140"
+        step="1"
+        value={pct(audioMix.music)}
+        onChange={(e) => setAudioMix((m) => ({ ...m, music: Number(e.target.value) / 100 }))}
+      />
+      <div className="audio-row">
+        <span>thrusters + Doppler</span>
+        <b>{pct(audioMix.thrusters)}%</b>
+      </div>
+      <input
+        type="range"
+        min="0"
+        max="140"
+        step="1"
+        value={pct(audioMix.thrusters)}
+        onChange={(e) => setAudioMix((m) => ({ ...m, thrusters: Number(e.target.value) / 100 }))}
+      />
+    </details>
+  );
+}
+
 function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
   const hud = getHud(world);
   return (
@@ -435,11 +489,22 @@ export default function App() {
     doppler: true,
     lightCones: true,
   });
+  const [audioMix, setAudioMix] = useState({
+    master: 1.05,
+    music: 1.1,
+    thrusters: 1.06,
+  });
   const optsRef = useRef(opts);
+  const audioMixRef = useRef(audioMix);
 
   useEffect(() => {
     optsRef.current = opts;
   }, [opts]);
+
+  useEffect(() => {
+    audioMixRef.current = audioMix;
+    applyAudioMix(audioRef.current, audioMix);
+  }, [audioMix]);
 
   if (!worldRef.current) worldRef.current = createWorld();
   if (!audioRef.current) audioRef.current = createAudioSystem();
@@ -447,6 +512,7 @@ export default function App() {
   useEffect(() => {
     const armAudio = () => {
       startAudio(audioRef.current);
+      applyAudioMix(audioRef.current, audioMixRef.current);
     };
     window.addEventListener('keydown', armAudio, { passive: true });
     window.addEventListener('pointerdown', armAudio, { passive: true });
@@ -494,6 +560,7 @@ export default function App() {
 
       const canvas = canvasRef.current;
       if (canvas) renderWorld(canvas, worldRef.current, camera, optsRef.current);
+      applyAudioMix(audioRef.current, audioMixRef.current);
       updateAudio(audioRef.current, worldRef.current);
 
       frameCount += 1;
@@ -510,8 +577,10 @@ export default function App() {
   return (
     <main className="app">
       <canvas ref={canvasRef} className="game-canvas" />
+      <BrandBanner />
       <LiveLeaderboard world={hudWorld} />
       <MinimapOverlay world={hudWorld} />
+      <AudioDock audioMix={audioMix} setAudioMix={setAudioMix} />
       <button
         className={`hud-toggle ${hudOpen ? 'open' : ''}`}
         onClick={() => setHudOpen((v) => !v)}

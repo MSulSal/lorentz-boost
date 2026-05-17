@@ -26,13 +26,51 @@ button, input { font: inherit; }
   height: 100%;
 }
 
+.brand-banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  text-align: center;
+  pointer-events: none;
+}
+
+.pixel-logo {
+  font-family: "Courier New", "Lucida Console", Monaco, monospace;
+  font-size: clamp(16px, 2.7vw, 26px);
+  letter-spacing: 0.22em;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: rgba(200, 245, 255, 0.98);
+  text-shadow:
+    1px 0 0 rgba(78, 230, 255, 0.95),
+    -1px 0 0 rgba(78, 230, 255, 0.95),
+    0 1px 0 rgba(78, 230, 255, 0.95),
+    0 -1px 0 rgba(78, 230, 255, 0.95),
+    0 0 16px rgba(78, 230, 255, 0.5);
+}
+
+.brand-sub {
+  margin-top: 2px;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(246, 215, 158, 0.9);
+}
+
 .hud {
   position: absolute;
-  inset: 18px auto 18px 18px;
+  inset: 62px auto 14px 14px;
   width: min(360px, calc(100vw - 36px));
   display: grid;
   gap: 12px;
   pointer-events: none;
+  max-height: calc(100vh - 76px);
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  z-index: 6;
 }
 
 .hud-toggle {
@@ -142,6 +180,54 @@ kbd {
 }
 .toggles input { accent-color: #6ee7ff; }
 
+.audio-dock .audio-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 7px;
+  font-size: 12px;
+  color: rgba(230, 244, 255, 0.82);
+}
+
+.audio-dock input[type="range"] {
+  width: 100%;
+  margin-top: 4px;
+  accent-color: #74ecff;
+}
+
+.audio-dock {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: min(270px, calc(100vw - 24px));
+  z-index: 7;
+  padding: 10px 12px;
+}
+
+.audio-dock summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(204, 237, 255, 0.94);
+  margin-bottom: 8px;
+}
+
+.audio-dock summary::-webkit-details-marker {
+  display: none;
+}
+
+.audio-dock:not([open]) {
+  width: 124px;
+  padding-bottom: 10px;
+}
+
+.audio-dock:not([open]) summary {
+  margin-bottom: 0;
+}
+
 .rank {
   padding: 4px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -211,6 +297,7 @@ kbd {
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   padding: 6px 8px 8px;
   pointer-events: none;
+  z-index: 5;
 }
 
 .minimap-title {
@@ -230,30 +317,72 @@ kbd {
 
 @media (max-width: 860px) {
   .hud {
-    width: min(330px, calc(100vw - 24px));
-    inset: 12px auto 12px 12px;
+    width: min(336px, calc(100vw - 16px));
+    inset: 56px auto 8px 8px;
     gap: 9px;
+    max-height: calc(100vh - 66px);
   }
   .leaderboard, .note { display: none; }
   .caption { display: none; }
-  .live-leaderboard {
-    top: 10px;
-    right: 10px;
-    width: min(220px, calc(100vw - 20px));
+  .panel {
     padding: 10px;
+    border-radius: 14px;
+  }
+  h1 {
+    font-size: 19px;
+  }
+  p {
+    font-size: 12px;
+    line-height: 1.33;
+  }
+  .meter-row {
+    font-size: 12px;
+  }
+  .controls div {
+    font-size: 11px;
+    flex-wrap: wrap;
+  }
+  .live-leaderboard {
+    top: 54px;
+    right: 8px;
+    width: min(198px, calc(100vw - 16px));
+    padding: 8px;
+    max-height: 36vh;
+    overflow-y: auto;
   }
   .live-rank {
     font-size: 11px;
   }
   .minimap-overlay {
-    width: 168px;
-    bottom: 10px;
+    width: 152px;
+    bottom: 8px;
+    left: auto;
+    right: 8px;
+    transform: none;
   }
   .hud-toggle {
-    top: 10px;
-    left: 10px;
-    padding: 7px 12px;
+    top: 8px;
+    left: 8px;
+    padding: 6px 10px;
     font-size: 11px;
+  }
+  .audio-dock {
+    left: 8px;
+    bottom: 8px;
+    width: min(196px, calc(100vw - 16px));
+    padding: 8px 9px;
+  }
+  .audio-dock summary {
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+  .pixel-logo {
+    font-size: clamp(13px, 4.7vw, 18px);
+    letter-spacing: 0.16em;
+  }
+  .brand-sub {
+    font-size: 8px;
+    letter-spacing: 0.14em;
   }
 }
 

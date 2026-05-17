@@ -2,6 +2,13 @@ import { C, clamp, dopplerFactor } from './relativity';
 
 const THRUST_SAMPLE_URL = new URL('./assets/audio/rocket_engine_cc0.wav', import.meta.url).href;
 const BGM_SAMPLE_URL = new URL('./assets/audio/space_echo_cc0.ogg', import.meta.url).href;
+const DEFAULT_MIX = Object.freeze({
+  master: 1,
+  music: 1,
+  thrusters: 1,
+});
+const MASTER_BASE_GAIN = 0.46;
+const BGM_BASE_GAIN = 0.086;
 
 function wrappedDeltaX(a, b, arenaX) {
   const span = arenaX * 2;
@@ -22,6 +29,14 @@ function ensureContext(audio) {
   audio.ctx = ctx;
   audio.master = master;
   return true;
+}
+
+function sanitizeMix(mix) {
+  return {
+    master: clamp(mix?.master ?? DEFAULT_MIX.master, 0, 1.4),
+    music: clamp(mix?.music ?? DEFAULT_MIX.music, 0, 1.4),
+    thrusters: clamp(mix?.thrusters ?? DEFAULT_MIX.thrusters, 0, 1.4),
+  };
 }
 
 async function ensureSample(audio) {
@@ -141,8 +156,21 @@ export function createAudioSystem() {
     bgmPromise: null,
     bgmSource: null,
     bgmGain: null,
+    mix: { ...DEFAULT_MIX },
     voices: new Map(),
   };
+}
+
+export function setAudioMix(audio, mix) {
+  if (!audio) return;
+  audio.mix = sanitizeMix(mix);
+  if (audio.ctx && audio.master) {
+    audio.master.gain.setTargetAtTime(
+      MASTER_BASE_GAIN * audio.mix.master,
+      audio.ctx.currentTime,
+      0.14,
+    );
+  }
 }
 
 export function startAudio(audio) {
@@ -153,11 +181,17 @@ export function startAudio(audio) {
   ensureMusic(audio).then(() => {
     if (audio?.ctx?.state === 'running') startBgm(audio);
   }).catch(() => null);
-  audio.master.gain.setTargetAtTime(0.34, ctx.currentTime, 0.18);
+  const mix = audio.mix ?? DEFAULT_MIX;
+  audio.master.gain.setTargetAtTime(MASTER_BASE_GAIN * mix.master, ctx.currentTime, 0.18);
 }
 
 export function updateAudio(audio, world) {
   if (!audio || !world || !audio.ctx || audio.ctx.state !== 'running') return;
+  const mix = audio.mix ?? DEFAULT_MIX;
+  const now = audio.ctx.currentTime;
+  if (audio.master) {
+    audio.master.gain.setTargetAtTime(MASTER_BASE_GAIN * mix.master, now, 0.14);
+  }
   if (audio.bgmBuffer) {
     startBgm(audio);
   } else {
@@ -167,11 +201,10 @@ export function updateAudio(audio, world) {
   }
 
   if (audio.bgmGain) {
-    const now = audio.ctx.currentTime;
-    let bgmLevel = 0.042;
-    if (world.paused) bgmLevel = 0.012;
-    if (world.raceFinished) bgmLevel = 0.024;
-    audio.bgmGain.gain.setTargetAtTime(bgmLevel, now, 0.28);
+    let bgmLevel = BGM_BASE_GAIN;
+    if (world.paused) bgmLevel = BGM_BASE_GAIN * 0.36;
+    if (world.raceFinished) bgmLevel = BGM_BASE_GAIN * 0.58;
+    audio.bgmGain.gain.setTargetAtTime(bgmLevel * mix.music, now, 0.28);
   }
 
   if (!audio.sampleBuffer) {
@@ -199,23 +232,24 @@ export function updateAudio(audio, world) {
       audio.voices.set(entity.id, voice);
     }
 
-    const now = audio.ctx.currentTime;
     const relX = wrappedDeltaX(entity.pos.x, listener.pos.x, world.arenaX);
     const distanceNorm = clamp(Math.abs(relX) / (world.arenaX * 0.9), 0, 1);
     const speedNorm = clamp(Math.abs(entity.vel.x) / C, 0, 1);
     const pan = clamp(relX / world.arenaX, -1, 1);
 
-    // Keep Doppler natural but pleasant by easing the factor and clamping extremes.
+    // Keep Doppler natural but audible by easing and clamping extremes.
     const rawDoppler = entity.id === listener.id ? 1 : dopplerFactor(entity.pos, entity.vel, listener.pos, listener.vel);
-    const softDoppler = clamp(Math.pow(rawDoppler, 0.45), 0.82, 1.22);
+    const softDoppler = clamp(Math.pow(rawDoppler, 0.55), 0.78, 1.28);
     const baseRate = entity.id === listener.id ? 0.9 + speedNorm * 0.35 : 0.86 + speedNorm * 0.28;
     const targetRate = clamp(baseRate * softDoppler, 0.72, 1.36);
     const filterHz = 360 + speedNorm * 1600 + (softDoppler - 1) * 180;
 
-    let loudness = (entity.id === listener.id ? 0.075 : 0.058) * (1 - distanceNorm * 0.8);
+    const voiceBase = entity.id === listener.id ? 0.094 : 0.078;
+    let loudness = voiceBase * (1 - distanceNorm * 0.66);
+    loudness = Math.max(loudness, entity.id === listener.id ? 0.006 : 0.0035);
     if (world.paused) loudness *= 0.22;
     if (world.raceFinished) loudness *= 0.28;
-    loudness = clamp(loudness, 0.0001, 0.095);
+    loudness = clamp(loudness * mix.thrusters, 0.0001, 0.14);
 
     voice.source.playbackRate.setTargetAtTime(targetRate, now, 0.1);
     voice.filter.frequency.setTargetAtTime(clamp(filterHz, 220, 2600), now, 0.14);
