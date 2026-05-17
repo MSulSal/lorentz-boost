@@ -9,6 +9,7 @@ const DEFAULT_MIX = Object.freeze({
 });
 const MASTER_BASE_GAIN = 0.46;
 const BGM_BASE_GAIN = 0.086;
+const FLEET_CUE_BASE_GAIN = 0.04;
 
 function wrappedDeltaX(a, b, arenaX) {
   const span = arenaX * 2;
@@ -153,6 +154,118 @@ function stopVoice(voice, ctx) {
   }
 }
 
+function flashSequenceFromId(id) {
+  const match = /^flash-(\d+)$/.exec(id ?? '');
+  return match ? Number(match[1]) : -1;
+}
+
+function playOneShotTone(audio, when, {
+  freq,
+  endFreq = freq,
+  duration = 0.12,
+  release = 0.08,
+  peak = 0.02,
+  type = 'triangle',
+  pan = 0,
+  lowpass = 2200,
+}) {
+  if (!audio?.ctx || !audio?.master) return;
+  const ctx = audio.ctx;
+  const osc = ctx.createOscillator();
+  const filter = ctx.createBiquadFilter();
+  const gain = ctx.createGain();
+  const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+
+  osc.type = type;
+  osc.frequency.setValueAtTime(Math.max(32, freq), when);
+  if (Math.abs(endFreq - freq) > 0.1) {
+    osc.frequency.exponentialRampToValueAtTime(Math.max(32, endFreq), when + duration);
+  }
+
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(lowpass, when);
+  gain.gain.setValueAtTime(0.0001, when);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), when + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + duration + release);
+
+  osc.connect(filter);
+  filter.connect(gain);
+  if (panner) {
+    panner.pan.setValueAtTime(clamp(pan, -1, 1), when);
+    gain.connect(panner);
+    panner.connect(audio.master);
+  } else {
+    gain.connect(audio.master);
+  }
+
+  osc.start(when);
+  osc.stop(when + duration + release + 0.02);
+}
+
+function processFleetFlashCues(audio, world, now, mix) {
+  const flashes = world?.flashes ?? [];
+  let maxSeen = audio.lastFlashSeq ?? -1;
+  let captures = 0;
+  let losses = 0;
+
+  for (const flash of flashes) {
+    const seq = flashSequenceFromId(flash.id);
+    if (seq > maxSeen) maxSeen = seq;
+    if (seq <= (audio.lastFlashSeq ?? -1)) continue;
+    if (flash.type === 'capture') captures += 1;
+    if (flash.type === 'fleet-loss') losses += 1;
+  }
+  audio.lastFlashSeq = Math.max(audio.lastFlashSeq ?? -1, maxSeen);
+
+  const cueScale = clamp((mix?.thrusters ?? 1) * 0.85, 0.25, 1.2);
+  if (captures > 0) {
+    const lift = Math.min(1.24, 1 + captures * 0.08);
+    playOneShotTone(audio, now, {
+      freq: 640 * lift,
+      endFreq: 980 * lift,
+      duration: 0.1,
+      release: 0.1,
+      peak: FLEET_CUE_BASE_GAIN * cueScale,
+      type: 'triangle',
+      pan: 0.16,
+      lowpass: 3200,
+    });
+    playOneShotTone(audio, now + 0.06, {
+      freq: 860 * lift,
+      endFreq: 1240 * lift,
+      duration: 0.09,
+      release: 0.08,
+      peak: FLEET_CUE_BASE_GAIN * 0.82 * cueScale,
+      type: 'sine',
+      pan: -0.1,
+      lowpass: 3600,
+    });
+  }
+  if (losses > 0) {
+    const drop = Math.min(1.18, 1 + losses * 0.06);
+    playOneShotTone(audio, now, {
+      freq: 420 / drop,
+      endFreq: 210 / drop,
+      duration: 0.14,
+      release: 0.12,
+      peak: FLEET_CUE_BASE_GAIN * 1.05 * cueScale,
+      type: 'sawtooth',
+      pan: -0.18,
+      lowpass: 1700,
+    });
+    playOneShotTone(audio, now + 0.04, {
+      freq: 290 / drop,
+      endFreq: 170 / drop,
+      duration: 0.12,
+      release: 0.1,
+      peak: FLEET_CUE_BASE_GAIN * 0.72 * cueScale,
+      type: 'triangle',
+      pan: 0.08,
+      lowpass: 1500,
+    });
+  }
+}
+
 export function createAudioSystem() {
   return {
     ctx: null,
@@ -166,6 +279,7 @@ export function createAudioSystem() {
     bgmGain: null,
     mix: { ...DEFAULT_MIX },
     voices: new Map(),
+    lastFlashSeq: -1,
   };
 }
 
@@ -228,6 +342,7 @@ export function updateAudio(audio, world) {
       audio.bgmSource.playbackRate.setTargetAtTime(heroicRate, now, 0.32);
     }
   }
+  processFleetFlashCues(audio, world, now, mix);
 
   if (!audio.sampleBuffer) {
     ensureSample(audio);
@@ -301,4 +416,5 @@ export function destroyAudio(audio) {
   audio.bgmSource = null;
   audio.bgmFilter = null;
   audio.bgmGain = null;
+  audio.lastFlashSeq = -1;
 }
