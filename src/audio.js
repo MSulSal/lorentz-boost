@@ -197,7 +197,7 @@ export function updateAudio(audio, world) {
   if (!audio || !world || !audio.ctx || audio.ctx.state !== 'running') return;
   const mix = audio.mix ?? DEFAULT_MIX;
   const now = audio.ctx.currentTime;
-  const entities = world.entities ?? [];
+  const entities = (world.entities ?? []).filter((e) => !e.isRespawning && !e.isRetired);
   const listener = world.player;
   if (audio.master) {
     audio.master.gain.setTargetAtTime(MASTER_BASE_GAIN * mix.master, now, 0.14);

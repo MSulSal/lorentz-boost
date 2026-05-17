@@ -8,7 +8,7 @@
 - Every worldline segment is lethal, including your own past trace (paradox kill).
 - Tail-killing an opponent rescues/converts that rocket into your fleet (team).
 - Rescued fleet ships auto-fly in parallel triangle escort formation around your lead rocket.
-- Death triggers a short respawn cooldown so dropped spacetime remnants can be contested.
+- Only full fleet wipe triggers respawn cooldown; otherwise you lose ships while surviving fleetmates keep you in the fight.
 - Spacetime events and dead-worldline drops extend your trace lifetime.
 - Space flips your time direction (`+t` <-> `-t`) for aggressive reversals and traps.
 

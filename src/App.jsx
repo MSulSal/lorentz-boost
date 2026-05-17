@@ -169,6 +169,7 @@ function MinimapOverlay({ world }) {
   const worldlineBack = [];
   const worldlineFront = [];
   for (const entity of world.entities) {
+    if (entity.isRetired) continue;
     const hist = entity.history ?? [];
     for (let i = 2; i < hist.length; i += 3) {
       const a = hist[i - 1];
@@ -197,6 +198,7 @@ function MinimapOverlay({ world }) {
   }
 
   const points = world.entities
+    .filter((entity) => !entity.isRetired)
     .map((entity) => {
       const p = spherePointFromXT(entity.pos.x, entity.coordTime ?? world.t, world, geom);
       const px = p.px;
@@ -442,7 +444,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div><kbd>Fleet</kbd> tail-kill opponents to convert them into your team fleet</div>
         <div><kbd>Fleet AI</kbd> rescued ships fly parallel in expanding triangle escort</div>
         <div><kbd>Drops</kbd> events + dead-worldline fragments extend your lethal worldline</div>
-        <div><kbd>Respawn</kbd> death triggers cooldown so others can grab remnants</div>
+        <div><kbd>Respawn</kbd> cooldown only triggers on full fleet wipe</div>
         <div><kbd>Audio</kbd> click or press any key once to arm Doppler rocket sound</div>
         <div><kbd>P</kbd> pause / resume</div>
         <div><kbd>T</kbd> cycle team colors + flag</div>
