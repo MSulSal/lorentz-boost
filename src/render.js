@@ -567,27 +567,6 @@ function drawTangent(ctx, world, camera) {
   ctx.restore();
 }
 
-function drawModeBanner(ctx, camera) {
-  const text = '16P MINKOWSKI SPHERE  TIME FLIP  WORLDLINE GROWTH';
-  const x = Math.floor(camera.width * 0.5);
-  const y = 10;
-  const w = Math.min(220, camera.width - 8);
-  const h = 11;
-  const left = Math.floor(x - w * 0.5);
-
-  ctx.save();
-  ctx.fillStyle = 'rgba(14, 38, 66, 0.78)';
-  ctx.fillRect(left, y, w, h);
-  ctx.strokeStyle = 'rgba(122, 218, 255, 0.64)';
-  ctx.strokeRect(left + 0.5, y + 0.5, w - 1, h - 1);
-
-  ctx.font = '6px ui-monospace, SFMono-Regular, Menlo, monospace';
-  ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(232,247,255,0.96)';
-  ctx.fillText(text, x, y + 7);
-  ctx.restore();
-}
-
 function makeCamera(displayWidth, displayHeight, world, cameraState) {
   return {
     originX: cameraState.x ?? 0,
@@ -684,7 +663,6 @@ export function renderWorld(canvas, world, cameraState, opts) {
   }
 
   drawTangent(ctx, world, camera);
-  drawModeBanner(ctx, camera);
 
   display.ctx.imageSmoothingEnabled = false;
   display.ctx.drawImage(pixelCanvas, 0, 0, pixel.width, pixel.height, 0, 0, display.displayWidth, display.displayHeight);
