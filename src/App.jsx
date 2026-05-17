@@ -19,9 +19,9 @@ const keyMap = {
   KeyT: 't',
 };
 
-const CAMERA_ZOOM_DEFAULT = 0.5;
-const CAMERA_ZOOM_MAX = 1.35;
-const CAMERA_ZOOM_MIN_FALLBACK = 0.02;
+const CAMERA_ZOOM_DEFAULT = 1.8;
+const CAMERA_ZOOM_MAX = 4.0;
+const CAMERA_ZOOM_MIN_FALLBACK = 1.0;
 const CAMERA_ZOOM_KEY_SPEED = 1.9;
 const RENDER_PIXEL_SCALE = 3;
 const RENDER_MIN_WIDTH = 320;
@@ -55,14 +55,9 @@ function renderBufferSize(canvas) {
 }
 
 function zoomBoundsFor(world, canvas) {
-  const size = renderBufferSize(canvas);
-  const arenaX = Math.max(1, world?.arenaX ?? 1);
-  const finishT = Math.max(1, world?.finishT ?? 1);
-  const fitXZoom = size.width / (arenaX * 2.04);
-  const fitTZoom = size.height / (finishT * C * 1.04);
-  const wholeSphereZoom = Math.min(fitXZoom, fitTZoom) * 0.98;
-  const min = clamp(wholeSphereZoom, CAMERA_ZOOM_MIN_FALLBACK, CAMERA_ZOOM_MAX * 0.44);
-  return { min, max: CAMERA_ZOOM_MAX };
+  void world;
+  void canvas;
+  return { min: CAMERA_ZOOM_MIN_FALLBACK, max: CAMERA_ZOOM_MAX };
 }
 
 function useKeyboard() {
@@ -720,6 +715,7 @@ export default function App() {
         camera.zoom = clamp(camera.zoom, zoomBounds.min, zoomBounds.max);
       }
       camera.minZoom = zoomBounds.min;
+      camera.maxZoom = zoomBounds.max;
 
       stepWorld(worldRef.current, controls, dt);
 

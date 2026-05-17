@@ -14,8 +14,6 @@ const MIN_RENDER_WIDTH = 320;
 const MIN_RENDER_HEIGHT = 180;
 const GAME_ASPECT = 16 / 9;
 const TAU = Math.PI * 2;
-const SPHERE_BLEND_MULT = 3.4;
-const SPHERE_BLEND_PAD = 0.06;
 const MAX_FORMATION_VISUAL_SHIPS = 28;
 const FORMATION_BACK_STEP = 8;
 const FORMATION_SIDE_STEP = 6;
@@ -95,15 +93,6 @@ function temporalPhase01(t, finishT) {
   return (((t % finishT) + finishT) % finishT) / finishT;
 }
 
-function projectCylinder(x, t, camera) {
-  const dt = t - camera.now;
-  const dx = camera.arenaX != null ? wrapDelta(x, camera.originX, camera.arenaX) : (x - camera.originX);
-  return {
-    x: camera.width * 0.5 + dx * camera.rawZoom,
-    y: camera.nowY - dt * C * camera.rawZoom,
-  };
-}
-
 function projectSphere(x, t, camera) {
   const u = normalizedWrap01(x, camera.arenaX);
   const v = temporalPhase01(t, camera.finishT);
@@ -124,9 +113,8 @@ function projectSphere(x, t, camera) {
   const y1 = sy * cosPitch - z1 * sinPitch;
   const z2 = sy * sinPitch + z1 * cosPitch;
 
-  const fish = 1 + 0.2 * Math.max(0, z2) * Math.max(0, z2);
-  const depthScale = 0.72 + 0.28 * ((z2 + 1) * 0.5);
-  const r = camera.sphereRadius * fish * depthScale;
+  const depthScale = 0.82 + 0.18 * ((z2 + 1) * 0.5);
+  const r = camera.sphereRadius * depthScale;
 
   return {
     x: camera.width * 0.5 + x1 * r,
@@ -135,15 +123,7 @@ function projectSphere(x, t, camera) {
 }
 
 function projectXT(x, t, camera) {
-  const cyl = projectCylinder(x, t, camera);
-  const blend = camera.sphereBlend ?? 0;
-  if (blend <= 0) return cyl;
-  const sph = projectSphere(x, t, camera);
-  if (blend >= 1) return sph;
-  return {
-    x: cyl.x + (sph.x - cyl.x) * blend,
-    y: cyl.y + (sph.y - cyl.y) * blend,
-  };
+  return projectSphere(x, t, camera);
 }
 
 function visibleOnCanvas(p, camera, margin = 120) {
@@ -233,76 +213,74 @@ function drawBackground(ctx, world, camera, opts) {
 }
 
 function drawGrid(ctx, world, camera) {
-  const timeScale = C * camera.zoom;
-  const secFuture = camera.nowY / timeScale + 1;
-  const secPast = (camera.height - camera.nowY) / timeScale + 1;
-  const tStart = Math.floor(camera.now - secPast);
-  const tEnd = Math.ceil(camera.now + secFuture);
-  const xStep = 180;
-  const xSpan = camera.width / Math.max(camera.zoom, 1e-4);
-  const xFirst = Math.floor((camera.originX - xSpan * 0.5) / xStep) * xStep;
-  const xLast = Math.ceil((camera.originX + xSpan * 0.5) / xStep) * xStep;
+  const finishT = Math.max(1, world.finishT ?? 1);
+  const lonLines = 12;
+  const latLines = 8;
+  const steps = 54;
+  const spanX = world.arenaX * 2;
+  const xFromU = (u) => u * spanX - world.arenaX;
+  const tFromV = (v) => v * finishT;
+
+  const strokeParamLine = (uFixed, vFixed, lon) => {
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const s = i / steps;
+      const u = lon ? uFixed : s;
+      const v = lon ? s : vFixed;
+      const p = projectXT(xFromU(u), tFromV(v), camera);
+      if (i === 0) ctx.moveTo(snap(p.x), snap(p.y));
+      else ctx.lineTo(snap(p.x), snap(p.y));
+    }
+    ctx.stroke();
+  };
 
   ctx.save();
-  ctx.font = '7px ui-monospace, SFMono-Regular, Menlo, monospace';
-
-  for (let t = tStart; t <= tEnd; t += 1) {
-    const y = projectXT(camera.originX, t, camera).y;
-    ctx.strokeStyle = 'rgba(130,190,255,0.08)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const left = projectXT(xFirst, t, camera);
-    const right = projectXT(xLast, t, camera);
-    ctx.moveTo(snap(left.x), snap(y));
-    ctx.lineTo(snap(right.x), snap(y));
-    ctx.stroke();
-    if (t % 2 === 0) {
-      ctx.fillStyle = 'rgba(190,225,255,0.38)';
-      ctx.fillText(`t=${t}`, camera.width - 26, y - 2);
-    }
+  ctx.strokeStyle = 'rgba(130,190,255,0.08)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < lonLines; i++) {
+    strokeParamLine(i / lonLines, 0, true);
+  }
+  for (let j = 1; j < latLines; j++) {
+    strokeParamLine(0, j / latLines, false);
   }
 
-  for (let x = xFirst; x <= xLast; x += xStep) {
-    ctx.strokeStyle = x === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(130,190,255,0.08)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const top = projectXT(x, tStart - 0.5, camera);
-    const bottom = projectXT(x, tEnd + 0.5, camera);
-    ctx.moveTo(snap(top.x), snap(top.y));
-    ctx.lineTo(snap(bottom.x), snap(bottom.y));
-    ctx.stroke();
-  }
-
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(camera.width * 0.5, camera.height * 0.5, camera.sphereRadius, 0, TAU);
+  ctx.stroke();
   ctx.restore();
 }
 
 function drawLightCones(ctx, world, camera) {
   const coordNow = world.player.coordTime ?? world.t;
   const origin = projectXT(world.player.pos.x, coordNow, camera);
-  const timeScale = C * camera.zoom;
-  const maxFuture = Math.min(camera.nowY / timeScale, 9.5);
-  const maxPast = Math.min((camera.height - camera.nowY) / timeScale, 9.5);
-  const conePoint = (dt, sign) => projectXT(world.player.pos.x + sign * C * dt, coordNow + dt, camera);
+  const coneSpan = 1.4 + 2.4 / Math.max(camera.zoom, 0.5);
+  const steps = 20;
+
+  const drawConeBranch = (sign, future) => {
+    const timeSign = future ? 1 : -1;
+    ctx.beginPath();
+    ctx.moveTo(snap(origin.x), snap(origin.y));
+    for (let i = 1; i <= steps; i++) {
+      const dt = (i / steps) * coneSpan * timeSign;
+      const p = projectXT(world.player.pos.x + sign * C * dt, coordNow + dt, camera);
+      ctx.lineTo(snap(p.x), snap(p.y));
+    }
+    ctx.stroke();
+  };
 
   ctx.save();
   ctx.lineCap = 'square';
   ctx.strokeStyle = 'rgba(72,232,255,0.34)';
   ctx.lineWidth = 1;
   for (const sign of [-1, 1]) {
-    const p = conePoint(maxFuture, sign);
-    ctx.beginPath();
-    ctx.moveTo(snap(origin.x), snap(origin.y));
-    ctx.lineTo(snap(p.x), snap(p.y));
-    ctx.stroke();
+    drawConeBranch(sign, true);
   }
 
   ctx.strokeStyle = 'rgba(255,104,210,0.3)';
   for (const sign of [-1, 1]) {
-    const p = conePoint(-maxPast, sign);
-    ctx.beginPath();
-    ctx.moveTo(snap(origin.x), snap(origin.y));
-    ctx.lineTo(snap(p.x), snap(p.y));
-    ctx.stroke();
+    drawConeBranch(sign, false);
   }
   ctx.restore();
 }
@@ -625,17 +603,17 @@ function drawTangent(ctx, world, camera) {
 
 function makeCamera(displayWidth, displayHeight, world, cameraState) {
   const rawZoom = cameraState.zoom ?? 0.45;
-  const minZoom = Math.max(1e-4, cameraState.minZoom ?? 0.02);
-  const sphereExit = Math.max(minZoom * SPHERE_BLEND_MULT, minZoom + SPHERE_BLEND_PAD);
-  const sphereBlend = clamp((sphereExit - rawZoom) / Math.max(1e-4, sphereExit - minZoom), 0, 1);
+  const minZoom = Math.max(0.001, cameraState.minZoom ?? 1);
+  const maxZoom = Math.max(minZoom + 0.001, cameraState.maxZoom ?? Math.max(minZoom + 0.001, rawZoom));
+  const zoomT = clamp((rawZoom - minZoom) / (maxZoom - minZoom), 0, 1);
   const finishT = Math.max(1, world.finishT ?? 1);
   const playerLon = (normalizedWrap01(world.player?.pos?.x ?? 0, world.arenaX) - 0.5) * TAU;
   const playerLat = (temporalPhase01(world.player?.coordTime ?? world.t, finishT) - 0.5) * Math.PI;
   const sphereYaw = Math.PI * 0.5 - playerLon;
   const spherePitch = playerLat;
-  const sphereRadius = Math.min(displayWidth, displayHeight) * 0.44;
-  const sphereBaseZoom = (sphereRadius * Math.PI) / Math.max(1, world.arenaX);
-  const zoom = rawZoom * (1 - sphereBlend) + sphereBaseZoom * sphereBlend;
+  const sphereFitRadius = Math.min(displayWidth, displayHeight) * 0.39;
+  const sphereRadius = sphereFitRadius * (1 + zoomT * 10);
+  const zoom = rawZoom;
 
   return {
     originX: cameraState.x ?? 0,
@@ -647,8 +625,8 @@ function makeCamera(displayWidth, displayHeight, world, cameraState) {
     width: displayWidth,
     height: displayHeight,
     minZoom,
+    maxZoom,
     finishT,
-    sphereBlend,
     sphereYaw,
     spherePitch,
     sphereRadius,
