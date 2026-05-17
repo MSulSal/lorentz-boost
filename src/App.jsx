@@ -8,12 +8,45 @@ import './styles.css';
 const keyMap = {
   KeyA: 'a',
   KeyD: 'd',
+  KeyW: 'zoomIn',
+  KeyS: 'zoomOut',
   ArrowLeft: 'a',
   ArrowRight: 'd',
+  ArrowUp: 'zoomIn',
+  ArrowDown: 'zoomOut',
   Space: 'space',
   KeyP: 'p',
   KeyT: 't',
 };
+
+const CAMERA_ZOOM_DEFAULT = 0.5;
+const CAMERA_ZOOM_MAX = 1.35;
+const CAMERA_ZOOM_MIN_FALLBACK = 0.0048;
+const CAMERA_ZOOM_KEY_SPEED = 1.9;
+const RENDER_PIXEL_SCALE = 3;
+const RENDER_MIN_WIDTH = 320;
+const RENDER_MIN_HEIGHT = 180;
+const PINCH_DISTANCE_EPS = 6;
+
+function renderBufferSize(canvas) {
+  const displayWidth = canvas?.clientWidth ?? window.innerWidth ?? RENDER_MIN_WIDTH;
+  const displayHeight = canvas?.clientHeight ?? window.innerHeight ?? RENDER_MIN_HEIGHT;
+  return {
+    width: Math.max(RENDER_MIN_WIDTH, Math.floor(displayWidth / RENDER_PIXEL_SCALE)),
+    height: Math.max(RENDER_MIN_HEIGHT, Math.floor(displayHeight / RENDER_PIXEL_SCALE)),
+  };
+}
+
+function zoomBoundsFor(world, canvas) {
+  const size = renderBufferSize(canvas);
+  const arenaX = Math.max(1, world?.arenaX ?? 1);
+  const finishT = Math.max(1, world?.finishT ?? 1);
+  const fitXZoom = size.width / (arenaX * 2.04);
+  const fitTZoom = size.height / (finishT * C * 1.04);
+  const wholeSphereZoom = Math.min(fitXZoom, fitTZoom) * 0.98;
+  const min = clamp(wholeSphereZoom, CAMERA_ZOOM_MIN_FALLBACK, CAMERA_ZOOM_MAX * 0.44);
+  return { min, max: CAMERA_ZOOM_MAX };
+}
 
 function useKeyboard() {
   const keys = useRef({});
@@ -472,6 +505,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
       <section className="panel controls">
         <h2>Controls</h2>
         <div><kbd>A</kbd><kbd>D</kbd><kbd>Left</kbd><kbd>Right</kbd> Lorentz steering and fuel burn</div>
+        <div><kbd>W</kbd><kbd>S</kbd><kbd>Up</kbd><kbd>Down</kbd> zoom spacetime view (pinch to zoom on mobile)</div>
         <div><kbd>Space</kbd> time reversal (x-axis reflection: face into past direction)</div>
         <div><kbd>Pole wrap</kbd> crossing temporal seam auto-reflects time direction and remaps to antipodal hemisphere</div>
         <div><kbd>Combat</kbd> all worldlines kill, including your own (paradox loops)</div>
@@ -514,9 +548,14 @@ export default function App() {
   const canvasRef = useRef(null);
   const keys = useKeyboard();
   const touchRef = useRef({ a: false, d: false, space: false });
+  const pinchRef = useRef({
+    pointers: new Map(),
+    startDistance: 0,
+    startZoom: CAMERA_ZOOM_DEFAULT,
+  });
   const worldRef = useRef(null);
   const audioRef = useRef(null);
-  const cameraRef = useRef({ x: 0, zoom: 0.5 });
+  const cameraRef = useRef({ x: 0, zoom: CAMERA_ZOOM_DEFAULT });
   const pauseLatch = useRef(false);
   const teamLatch = useRef(false);
   const spaceLatch = useRef(false);
@@ -565,6 +604,61 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const pinch = pinchRef.current;
+
+    const pin = (e) => ({ x: e.clientX, y: e.clientY });
+
+    const onPointerDown = (e) => {
+      if (e.pointerType !== 'touch') return;
+      pinch.pointers.set(e.pointerId, pin(e));
+      if (pinch.pointers.size === 2) {
+        const [a, b] = [...pinch.pointers.values()];
+        pinch.startDistance = Math.hypot(b.x - a.x, b.y - a.y);
+        pinch.startZoom = cameraRef.current.zoom;
+      }
+    };
+
+    const onPointerMove = (e) => {
+      if (e.pointerType !== 'touch') return;
+      if (!pinch.pointers.has(e.pointerId)) return;
+      pinch.pointers.set(e.pointerId, pin(e));
+      if (pinch.pointers.size < 2 || pinch.startDistance < PINCH_DISTANCE_EPS) return;
+      const [a, b] = [...pinch.pointers.values()];
+      const dist = Math.hypot(b.x - a.x, b.y - a.y);
+      if (!(dist > PINCH_DISTANCE_EPS)) return;
+      const zoomScale = dist / pinch.startDistance;
+      const bounds = zoomBoundsFor(worldRef.current, canvas);
+      cameraRef.current.zoom = clamp(pinch.startZoom * zoomScale, bounds.min, bounds.max);
+      e.preventDefault();
+    };
+
+    const onPointerUp = (e) => {
+      if (e.pointerType !== 'touch') return;
+      pinch.pointers.delete(e.pointerId);
+      if (pinch.pointers.size < 2) {
+        pinch.startDistance = 0;
+        pinch.startZoom = cameraRef.current.zoom;
+      }
+    };
+
+    canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+    canvas.addEventListener('pointermove', onPointerMove, { passive: false });
+    canvas.addEventListener('pointerup', onPointerUp, { passive: false });
+    canvas.addEventListener('pointercancel', onPointerUp, { passive: false });
+    canvas.addEventListener('pointerleave', onPointerUp, { passive: false });
+    return () => {
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('pointercancel', onPointerUp);
+      canvas.removeEventListener('pointerleave', onPointerUp);
+      pinch.pointers.clear();
+    };
+  }, []);
+
+  useEffect(() => {
     let raf = 0;
     let last = performance.now();
     let frameCount = 0;
@@ -576,6 +670,8 @@ export default function App() {
         a: !!(keys.current.a || touchRef.current.a),
         d: !!(keys.current.d || touchRef.current.d),
         space: !!(keys.current.space || touchRef.current.space),
+        zoomIn: !!keys.current.zoomIn,
+        zoomOut: !!keys.current.zoomOut,
         p: !!keys.current.p,
         t: !!keys.current.t,
       };
@@ -597,6 +693,15 @@ export default function App() {
         setWorldVersion((v) => v + 1);
       }
       teamLatch.current = !!controls.t;
+
+      const zoomDir = (rawControls.zoomIn ? 1 : 0) - (rawControls.zoomOut ? 1 : 0);
+      const zoomBounds = zoomBoundsFor(worldRef.current, canvasRef.current);
+      if (zoomDir !== 0) {
+        const zoomScale = Math.exp(zoomDir * CAMERA_ZOOM_KEY_SPEED * dt);
+        camera.zoom = clamp(camera.zoom * zoomScale, zoomBounds.min, zoomBounds.max);
+      } else {
+        camera.zoom = clamp(camera.zoom, zoomBounds.min, zoomBounds.max);
+      }
 
       stepWorld(worldRef.current, controls, dt);
 
