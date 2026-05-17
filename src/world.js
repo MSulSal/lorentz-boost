@@ -61,6 +61,9 @@ const RESPAWN_BACKTRACK = 260;
 const KILL_SCORE = 260;
 const DEATH_SCORE_PENALTY = 190;
 const RESCUE_SCORE = 120;
+const FLEET_SLOT_X_SPACING = 86;
+const FLEET_SLOT_T_SPACING = 0.92;
+const FLEET_FOLLOWER_MAX_ACC = BOT_THRUST * 1.58;
 
 const COURSE_SAMPLE_DT = 1.25;
 const COURSE_LANE_WANDER = 220;
@@ -204,15 +207,40 @@ function buildFleetCountMap(entities) {
   return counts;
 }
 
+function buildFleetFollowerSlots(followerCount) {
+  const slots = [];
+  if (followerCount <= 0) return slots;
+  if (followerCount === 1) {
+    slots.push({ xOffset: FLEET_SLOT_X_SPACING * 0.72, tOffset: 0 });
+    return slots;
+  }
+
+  let row = 1;
+  while (slots.length < followerCount) {
+    const rowSize = row + 1;
+    for (let c = 0; c < rowSize && slots.length < followerCount; c++) {
+      const lateral = c - (rowSize - 1) * 0.5;
+      slots.push({
+        xOffset: lateral * FLEET_SLOT_X_SPACING,
+        tOffset: row * FLEET_SLOT_T_SPACING,
+      });
+    }
+    row += 1;
+  }
+  return slots;
+}
+
 function fleetSizeFor(entity, fleetCounts) {
   return fleetCounts.get(fleetId(entity)) ?? 1;
 }
 
 function convertVictimToFleet(victim, killer, world) {
   if (!killer || killer.id === victim.id) return;
+  if (victim.kind !== 'bot') return;
   if (sameFleet(victim, killer)) return;
   if (!killer.team) return;
   applyTeam(victim, killer.team);
+  victim.fleetJoinOrder = (world.nextFleetJoinOrder = (world.nextFleetJoinOrder ?? 0) + 1);
   killer.fleetRescues = (killer.fleetRescues ?? 0) + 1;
   killer.score += RESCUE_SCORE;
   emitFlash(world, {
@@ -621,6 +649,23 @@ function tryRetroBoost(entity, world) {
   return true;
 }
 
+function updateFleetFollower(bot, leader, slot, dt) {
+  bot.timeDirection = leader.timeDirection ?? 1;
+  const desiredX = wrapX((leader.pos?.x ?? 0) + (slot?.xOffset ?? 0));
+  const dx = wrappedDelta(desiredX, bot.pos.x);
+  const dv = (leader.vel?.x ?? 0) - bot.vel.x;
+  const accX = clamp(dx * 3.35 + dv * 1.55, -FLEET_FOLLOWER_MAX_ACC, FLEET_FOLLOWER_MAX_ACC);
+  integrateRelativistic(bot, v(accX, 0), dt, BOT_MAX_BETA);
+  if (Math.abs(bot.vel.x) > 2) {
+    bot.facing = Math.sign(bot.vel.x);
+  }
+
+  const steerNeed = clamp(Math.abs(accX) / Math.max(1, FLEET_FOLLOWER_MAX_ACC), 0, 1);
+  const burn = steerNeed * FUEL_TURN_DRAIN * dt * 0.48;
+  const regen = FUEL_REGEN * dt * 0.95;
+  bot.boostEnergy = clamp((bot.boostEnergy ?? 0) + regen - burn, 0, FUEL_MAX);
+}
+
 function updatePlayerBoostAndSteer(player, controls, dt, world) {
   const steerInput = (controls.d ? 1 : 0) - (controls.a ? 1 : 0);
   const burn = Math.abs(steerInput) * FUEL_TURN_DRAIN * dt;
@@ -984,6 +1029,7 @@ export function createWorld() {
     nextTrailId: 0,
     nextFlashId: 0,
     nextDropId: 0,
+    nextFleetJoinOrder: 0,
   };
 }
 
@@ -1012,8 +1058,25 @@ export function stepWorld(world, controls, rawDt) {
   }
   wrapPoint(world.player.pos);
 
+  const player = world.player;
+  const fleetFollowers = world.bots
+    .filter((bot) => sameFleet(bot, player))
+    .sort((a, b) => {
+      const ao = a.fleetJoinOrder ?? Number.POSITIVE_INFINITY;
+      const bo = b.fleetJoinOrder ?? Number.POSITIVE_INFINITY;
+      if (ao !== bo) return ao - bo;
+      return (a.id ?? '').localeCompare(b.id ?? '');
+    });
+  const fleetFollowerSlots = buildFleetFollowerSlots(fleetFollowers.length);
+  const followerIdToSlot = new Map(fleetFollowers.map((bot, i) => [bot.id, fleetFollowerSlots[i]]));
+
   for (const bot of world.bots) {
-    updateBot(bot, world, dt, prevXMap);
+    const slot = followerIdToSlot.get(bot.id);
+    if (slot) {
+      updateFleetFollower(bot, player, slot, dt);
+    } else {
+      updateBot(bot, world, dt, prevXMap);
+    }
     wrapPoint(bot.pos);
   }
 
@@ -1022,7 +1085,12 @@ export function stepWorld(world, controls, rawDt) {
   for (const e of world.entities) {
     wrapPoint(e.pos);
     const prevCoordTime = prevCoordTimeMap.get(e.id) ?? (e.coordTime ?? world.t);
-    e.coordTime = prevCoordTime + (e.timeDirection ?? 1) * dt;
+    const slot = followerIdToSlot.get(e.id);
+    if (slot) {
+      e.coordTime = (world.player.coordTime ?? world.t) - (world.player.timeDirection ?? 1) * slot.tOffset;
+    } else {
+      e.coordTime = prevCoordTime + (e.timeDirection ?? 1) * dt;
+    }
     e.unwrappedX = unwrapFromPrev(e.pos.x, prevUnwrappedXMap.get(e.id) ?? e.pos.x);
     spawnTrail(
       e,

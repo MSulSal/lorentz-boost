@@ -205,27 +205,8 @@ kbd {
   padding: 10px 12px;
 }
 
-.audio-dock summary {
-  cursor: pointer;
-  list-style: none;
-  font-size: 12px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: rgba(204, 237, 255, 0.94);
-  margin-bottom: 8px;
-}
-
-.audio-dock summary::-webkit-details-marker {
-  display: none;
-}
-
-.audio-dock:not([open]) {
-  width: 124px;
-  padding-bottom: 10px;
-}
-
-.audio-dock:not([open]) summary {
-  margin-bottom: 0;
+.audio-dock h2 {
+  margin-bottom: 6px;
 }
 
 .rank {
@@ -372,10 +353,7 @@ kbd {
     width: min(196px, calc(100vw - 16px));
     padding: 8px 9px;
   }
-  .audio-dock summary {
-    font-size: 11px;
-    margin-bottom: 6px;
-  }
+  .audio-dock h2 { margin-bottom: 5px; }
   .pixel-logo {
     font-size: clamp(13px, 4.7vw, 18px);
     letter-spacing: 0.16em;

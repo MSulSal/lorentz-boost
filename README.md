@@ -7,6 +7,7 @@
 - You steer a rocket worldline in compactified 1+1D spacetime.
 - Every worldline segment is lethal, including your own past trace (paradox kill).
 - Tail-killing an opponent rescues/converts that rocket into your fleet (team).
+- Rescued fleet ships auto-fly in parallel triangle escort formation around your lead rocket.
 - Spacetime events and dead-worldline drops extend your trace lifetime.
 - Space flips your time direction (`+t` <-> `-t`) for aggressive reversals and traps.
 
@@ -17,6 +18,7 @@
 - No gravity wells (removed for cleaner motion and readability)
 - Doppler-shifted rocket audio + CC0 retro-space background music
 - In-game audio sliders for master/music/thruster mix
+- Music energy scales up as your fleet grows.
 - Relativistic visual treatment
 
 ## Controls

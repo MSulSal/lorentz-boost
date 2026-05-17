@@ -350,8 +350,8 @@ function BrandBanner() {
 function AudioDock({ audioMix, setAudioMix }) {
   const pct = (v) => Math.round((v ?? 1) * 100);
   return (
-    <details className="audio-dock panel" open>
-      <summary>Audio</summary>
+    <aside className="audio-dock panel" aria-label="Audio controls">
+      <h2>Audio</h2>
       <div className="audio-row">
         <span>master</span>
         <b>{pct(audioMix.master)}%</b>
@@ -388,7 +388,7 @@ function AudioDock({ audioMix, setAudioMix }) {
         value={pct(audioMix.thrusters)}
         onChange={(e) => setAudioMix((m) => ({ ...m, thrusters: Number(e.target.value) / 100 }))}
       />
-    </details>
+    </aside>
   );
 }
 
@@ -439,6 +439,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div><kbd>Space</kbd> time reversal (x-axis reflection: face into past direction)</div>
         <div><kbd>Combat</kbd> all worldlines kill, including your own (paradox loops)</div>
         <div><kbd>Fleet</kbd> tail-kill opponents to convert them into your team fleet</div>
+        <div><kbd>Fleet AI</kbd> rescued ships fly parallel in expanding triangle escort</div>
         <div><kbd>Drops</kbd> events + dead-worldline fragments extend your lethal worldline</div>
         <div><kbd>Audio</kbd> click or press any key once to arm Doppler rocket sound</div>
         <div><kbd>P</kbd> pause / resume</div>
