@@ -1,6 +1,7 @@
 import { C, clamp, dopplerFactor } from './relativity';
 
 const THRUST_SAMPLE_URL = new URL('./assets/audio/rocket_engine_cc0.wav', import.meta.url).href;
+const BGM_SAMPLE_URL = new URL('./assets/audio/space_echo_cc0.ogg', import.meta.url).href;
 
 function wrappedDeltaX(a, b, arenaX) {
   const span = arenaX * 2;
@@ -35,6 +36,50 @@ async function ensureSample(audio) {
     return decoded;
   })().catch(() => null);
   return audio.samplePromise;
+}
+
+async function ensureMusic(audio) {
+  if (audio.bgmBuffer) return audio.bgmBuffer;
+  if (audio.bgmPromise) return audio.bgmPromise;
+  if (!audio.ctx) return null;
+  audio.bgmPromise = (async () => {
+    const resp = await fetch(BGM_SAMPLE_URL);
+    const data = await resp.arrayBuffer();
+    const decoded = await audio.ctx.decodeAudioData(data);
+    audio.bgmBuffer = decoded;
+    return decoded;
+  })().catch(() => null);
+  return audio.bgmPromise;
+}
+
+function startBgm(audio) {
+  if (!audio.ctx || !audio.bgmBuffer || audio.bgmSource) return;
+  const source = audio.ctx.createBufferSource();
+  const gain = audio.ctx.createGain();
+  source.buffer = audio.bgmBuffer;
+  source.loop = true;
+  source.loopStart = 0;
+  source.loopEnd = Math.max(0.01, audio.bgmBuffer.duration);
+  gain.gain.value = 0.0001;
+  source.connect(gain);
+  gain.connect(audio.master);
+  source.start();
+  audio.bgmSource = source;
+  audio.bgmGain = gain;
+}
+
+function stopBgm(audio) {
+  if (!audio?.ctx || !audio.bgmSource || !audio.bgmGain) return;
+  const now = audio.ctx.currentTime;
+  audio.bgmGain.gain.cancelScheduledValues(now);
+  audio.bgmGain.gain.setTargetAtTime(0.0001, now, 0.08);
+  try {
+    audio.bgmSource.stop(now + 0.15);
+  } catch {
+    // Ignore already-stopped nodes.
+  }
+  audio.bgmSource = null;
+  audio.bgmGain = null;
 }
 
 function createVoice(audio, entityId) {
@@ -92,6 +137,10 @@ export function createAudioSystem() {
     master: null,
     sampleBuffer: null,
     samplePromise: null,
+    bgmBuffer: null,
+    bgmPromise: null,
+    bgmSource: null,
+    bgmGain: null,
     voices: new Map(),
   };
 }
@@ -101,11 +150,30 @@ export function startAudio(audio) {
   const ctx = audio.ctx;
   if (ctx.state === 'suspended') ctx.resume();
   ensureSample(audio);
+  ensureMusic(audio).then(() => {
+    if (audio?.ctx?.state === 'running') startBgm(audio);
+  }).catch(() => null);
   audio.master.gain.setTargetAtTime(0.34, ctx.currentTime, 0.18);
 }
 
 export function updateAudio(audio, world) {
   if (!audio || !world || !audio.ctx || audio.ctx.state !== 'running') return;
+  if (audio.bgmBuffer) {
+    startBgm(audio);
+  } else {
+    ensureMusic(audio).then(() => {
+      if (audio?.ctx?.state === 'running') startBgm(audio);
+    }).catch(() => null);
+  }
+
+  if (audio.bgmGain) {
+    const now = audio.ctx.currentTime;
+    let bgmLevel = 0.042;
+    if (world.paused) bgmLevel = 0.012;
+    if (world.raceFinished) bgmLevel = 0.024;
+    audio.bgmGain.gain.setTargetAtTime(bgmLevel, now, 0.28);
+  }
+
   if (!audio.sampleBuffer) {
     ensureSample(audio);
     return;
@@ -162,6 +230,7 @@ export function destroyAudio(audio) {
   if (!audio || !audio.ctx) return;
   const ctx = audio.ctx;
   const now = ctx.currentTime;
+  stopBgm(audio);
   for (const voice of audio.voices.values()) {
     stopVoice(voice, ctx);
   }
@@ -174,4 +243,8 @@ export function destroyAudio(audio) {
   audio.master = null;
   audio.sampleBuffer = null;
   audio.samplePromise = null;
+  audio.bgmBuffer = null;
+  audio.bgmPromise = null;
+  audio.bgmSource = null;
+  audio.bgmGain = null;
 }
