@@ -756,12 +756,12 @@ export default function App() {
     const axisFromClientX = (clientX) => {
       const rect = canvas.getBoundingClientRect();
       const half = Math.max(1, rect.width * 0.5);
-      const axis = (clientX - (rect.left + half)) / half;
+      const axis = -((clientX - (rect.left + half)) / half);
       return applyDeadzone(shapeAxis(axis, MOUSE_AXIS_GAIN));
     };
 
     const axisFromDeltaX = (deltaX) => {
-      const raw = deltaX / MOUSE_DELTA_PIXELS;
+      const raw = -deltaX / MOUSE_DELTA_PIXELS;
       return applyDeadzone(shapeAxis(raw, MOUSE_AXIS_GAIN));
     };
 
