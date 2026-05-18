@@ -15,6 +15,8 @@ const MIN_RENDER_HEIGHT = 180;
 const GAME_ASPECT = 16 / 9;
 const TAU = Math.PI * 2;
 const OUTSIDE_CAM_DIST = 4.8;
+const VISUAL_ZOOM_MIN = 0.5;
+const VISUAL_ZOOM_MAX = 0.82;
 const MAX_FORMATION_VISUAL_SHIPS = 28;
 const FORMATION_BACK_STEP = 8;
 const FORMATION_SIDE_STEP = 6;
@@ -654,7 +656,7 @@ function makeCamera(displayWidth, displayHeight, world, cameraState) {
   const sphereRadius = sphereFitRadius * (1 + zoomT * 10);
   const outsideCamDist = OUTSIDE_CAM_DIST;
   const frontDepthThreshold = 0;
-  const zoom = rawZoom;
+  const zoom = VISUAL_ZOOM_MIN + (VISUAL_ZOOM_MAX - VISUAL_ZOOM_MIN) * zoomT;
 
   return {
     originX: cameraState.x ?? 0,
