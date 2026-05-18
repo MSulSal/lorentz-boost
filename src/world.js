@@ -67,8 +67,6 @@ const FLEET_HITBOX_SCALE = 0.94;
 const FLEET_HITBOX_MAX_BONUS = 52;
 const EVENT_SPEED_BOOST_BASE = 6;
 const EVENT_SPEED_BOOST_PER_ENERGY = 0.52;
-const POLE_FLIP_COOLDOWN = 0.72;
-const POLE_FLIP_COORDTIME_OFFSET = 0.36;
 const CAPTURE_SELF_TRAIL_GRACE = 0.32;
 const RETRO_SELF_TRAIL_GRACE = 1.2;
 const FACING_VELOCITY_EPS = 0.01;
@@ -528,7 +526,6 @@ function makeEntity(id, name, kind, x, team, initialVx = 0, timeDirection = 1, i
     respawnProgress: 0,
     invulnerableUntil: 0,
     retroReadyAt: 0,
-    nextPoleFlipAt: 0,
     recentCaptureUntil: 0,
     selfTrailGraceUntil: 0,
     kills: 0,
@@ -1003,32 +1000,6 @@ function spawnTrail(entity, world, prevWrappedX, prevCoordT, currCoordT, simNow)
   });
 }
 
-function maybeFlipAtTemporalPole(entity, world, prevCoordTime, currCoordTime) {
-  const finishT = world.finishT ?? 0;
-  if (!(finishT > 0)) return false;
-  if (world.t < (entity.nextPoleFlipAt ?? 0)) return false;
-  const prevBand = Math.floor(prevCoordTime / finishT);
-  const currBand = Math.floor(currCoordTime / finishT);
-  if (prevBand === currBand) return false;
-
-  const forward = currCoordTime >= prevCoordTime;
-  entity.timeDirection = forward ? -1 : 1;
-  const seam = forward ? (prevBand + 1) * finishT : prevBand * finishT;
-  entity.coordTime = seam + entity.timeDirection * POLE_FLIP_COORDTIME_OFFSET;
-  // Pole crossing transitions to the antipodal hemisphere on the compact sphere.
-  entity.pos = v(wrapX(entity.pos.x + TRACK_LENGTH * 0.5), 0);
-  entity.nextPoleFlipAt = world.t + POLE_FLIP_COOLDOWN;
-  entity.invulnerableUntil = Math.max(entity.invulnerableUntil ?? 0, world.t + 0.3);
-  entity.lastTrailAt = world.t;
-  emitFlash(world, {
-    type: 'pole-flip',
-    x: entity.pos.x,
-    t: world.t,
-    hue: (entity.hue ?? 200) + (entity.timeDirection > 0 ? 116 : 330),
-  });
-  return true;
-}
-
 function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
   const ownerById = new Map(world.entities.map((e) => [e.id, e]));
   const pendingKills = [];
@@ -1253,21 +1224,15 @@ export function stepWorld(world, controls, rawDt) {
     const prevCoordTime = prevCoordTimeMap.get(e.id) ?? (e.coordTime ?? world.t);
     const prevUnwrappedX = prevUnwrappedXMap.get(e.id) ?? e.pos.x;
     e.coordTime = prevCoordTime + (e.timeDirection ?? 1) * dt;
-    const poleFlipped = maybeFlipAtTemporalPole(e, world, prevCoordTime, e.coordTime);
-    if (poleFlipped) {
-      // Skip seam-bridge traces/progress from antipodal remap.
-      e.unwrappedX = prevUnwrappedX;
-    } else {
-      e.unwrappedX = unwrapFromPrev(e.pos.x, prevUnwrappedX);
-      spawnTrail(
-        e,
-        world,
-        prevXMap.get(e.id) ?? e.pos.x,
-        prevCoordTime,
-        e.coordTime,
-        world.t,
-      );
-    }
+    e.unwrappedX = unwrapFromPrev(e.pos.x, prevUnwrappedX);
+    spawnTrail(
+      e,
+      world,
+      prevXMap.get(e.id) ?? e.pos.x,
+      prevCoordTime,
+      e.coordTime,
+      world.t,
+    );
     updateRaceProgress(e, prevUnwrappedX, e.unwrappedX, world);
   }
 

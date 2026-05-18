@@ -334,8 +334,14 @@ function MinimapOverlay({ world }) {
         <text x={cx} y={cy - r - 9} textAnchor="middle" fill="rgba(255, 220, 155, 0.92)" fontSize="9" fontFamily="ui-monospace, monospace">
           t seam
         </text>
+        <text x={cx} y={cy - r - 1} textAnchor="middle" fill="rgba(255, 220, 155, 0.72)" fontSize="8" fontFamily="ui-monospace, monospace">
+          t:[0,{fmt(world.finishT, 0)})
+        </text>
         <text x={cx} y={cy + r + 13} textAnchor="middle" fill="rgba(170, 234, 255, 0.9)" fontSize="9" fontFamily="ui-monospace, monospace">
           x seam
+        </text>
+        <text x={cx} y={cy + r + 19} textAnchor="middle" fill="rgba(170, 234, 255, 0.74)" fontSize="8" fontFamily="ui-monospace, monospace">
+          x:[-{fmt(world.arenaX, 0)},+{fmt(world.arenaX, 0)}]
         </text>
         <text x={12} y={18} fill="rgba(170, 234, 255, 0.86)" fontSize="9" fontFamily="ui-monospace, monospace">
           phase={fmt(worldPhase, 1)}
@@ -503,7 +509,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div><kbd>LMB</kbd> desktop left-click reverse pulse, <kbd>tap screen</kbd> mobile reverse pulse</div>
         <div><kbd>W</kbd><kbd>S</kbd><kbd>Up</kbd><kbd>Down</kbd> or <kbd>mouse wheel</kbd> zoom spacetime view (pinch to zoom on mobile)</div>
         <div><kbd>Space</kbd> time reversal (x-axis reflection: face into past direction)</div>
-        <div><kbd>Pole wrap</kbd> crossing temporal seam auto-reflects time direction and remaps to antipodal hemisphere</div>
+        <div><kbd>Sphere traversal</kbd> seamless wrapped traversal on the Minkowski 2-sphere (no automatic pole flip)</div>
         <div><kbd>Combat</kbd> all worldlines kill, including your own (paradox loops)</div>
         <div><kbd>Fleet</kbd> tail-kill opponents to capture a ship into your head formation reserve</div>
         <div><kbd>Formation</kbd> reserve ships render in triangular lead formation and expand hitbox</div>

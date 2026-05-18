@@ -228,6 +228,7 @@ function drawGrid(ctx, world, camera) {
   const spanX = world.arenaX * 2;
   const xFromU = (u) => u * spanX - world.arenaX;
   const tFromV = (v) => v * finishT;
+  const wrapUnit = (n) => (((n % 1) + 1) % 1);
 
   const strokeParamLine = (uFixed, vFixed, lon) => {
     let open = false;
@@ -270,6 +271,49 @@ function drawGrid(ctx, world, camera) {
   ctx.beginPath();
   ctx.arc(camera.width * 0.5, camera.height * 0.5, camera.sphereRadius, 0, TAU);
   ctx.stroke();
+
+  const drawnLabels = [];
+  const canPlaceLabel = (x, y) => {
+    for (const p of drawnLabels) {
+      const dx = x - p.x;
+      const dy = y - p.y;
+      if (dx * dx + dy * dy < 18 * 18) return false;
+    }
+    drawnLabels.push({ x, y });
+    return true;
+  };
+  const drawGridLabel = (p, text, color) => {
+    if (!visibleOutsideSphere(p) || !visibleOnCanvas(p, camera, 24)) return;
+    const x = snap(p.x);
+    const y = snap(p.y);
+    if (!canPlaceLabel(x, y)) return;
+    const w = Math.max(20, text.length * 4 + 5);
+    const h = 9;
+    ctx.fillStyle = 'rgba(6,14,28,0.68)';
+    ctx.fillRect(x - Math.floor(w * 0.5), y - Math.floor(h * 0.5), w, h);
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y + 0.5);
+  };
+
+  const playerU = normalizedWrap01(world.player?.pos?.x ?? 0, world.arenaX);
+  const playerV = temporalPhase01(world.player?.coordTime ?? world.t, finishT);
+  const xOffsets = [-0.5, -0.25, 0, 0.25, 0.5];
+  const tFractions = [0, 0.25, 0.5, 0.75];
+
+  ctx.font = '6px ui-monospace, SFMono-Regular, Menlo, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const off of xOffsets) {
+    const u = wrapUnit(playerU + off);
+    const xVal = xFromU(u);
+    const p = projectXT(xVal, tFromV(playerV), camera);
+    drawGridLabel(p, `x=${Math.round(xVal)}`, 'rgba(162,233,255,0.92)');
+  }
+  for (const vf of tFractions) {
+    const tVal = tFromV(vf);
+    const p = projectXT(xFromU(playerU), tVal, camera);
+    drawGridLabel(p, `t=${tVal.toFixed(0)}`, 'rgba(255,220,156,0.94)');
+  }
   ctx.restore();
 }
 
