@@ -30,7 +30,8 @@ const GAME_ASPECT = 16 / 9;
 const PINCH_DISTANCE_EPS = 6;
 const STEER_DEADZONE = 0.018;
 const TILT_AXIS_GAIN = 1 / 18;
-const MOUSE_AXIS_GAIN = 1.45;
+const MOUSE_AXIS_GAIN = 1.95;
+const MOUSE_DELTA_PIXELS = 26;
 const AXIS_CURVE = 0.68;
 
 function isCoarsePointerDevice() {
@@ -105,20 +106,6 @@ function useKeyboard() {
     };
   }, []);
   return keys;
-}
-
-function holdHandlers(ref, key) {
-  const set = (value) => (e) => {
-    e.preventDefault();
-    ref.current[key] = value;
-  };
-  return {
-    onPointerDown: set(true),
-    onPointerUp: set(false),
-    onPointerCancel: set(false),
-    onPointerLeave: set(false),
-    onContextMenu: (e) => e.preventDefault(),
-  };
 }
 
 function fmt(n, digits = 2) {
@@ -454,17 +441,6 @@ function AudioDock({ audioMix, setAudioMix }) {
   );
 }
 
-function TouchControls({ touchRef }) {
-  const reverse = holdHandlers(touchRef, 'space');
-  return (
-    <div className="touch-controls" aria-hidden="true">
-      <button type="button" className="touch-btn reverse" aria-label="Flip time direction" {...reverse}>
-        <span className="touch-icon rocket-flip" aria-hidden="true">&#x1F680;&#x21BB;</span>
-      </button>
-    </div>
-  );
-}
-
 function MobilePauseButton({ paused, onTogglePause }) {
   return (
     <button type="button" className="mobile-pause-btn" onClick={onTogglePause} aria-label={paused ? 'Resume simulation' : 'Pause simulation'}>
@@ -519,10 +495,10 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
 
       <section className="panel controls">
         <h2>Controls</h2>
-        <div><kbd>Mouse</kbd> horizontal steering axis on desktop</div>
-        <div><kbd>Phone tilt</kbd> orientation steering axis on mobile (with keyboard fallback)</div>
+        <div><kbd>Mouse move</kbd> move right/left to steer right/left on desktop</div>
+        <div><kbd>Phone tilt</kbd> rotate right/left to steer right/left on mobile</div>
         <div><kbd>A</kbd><kbd>D</kbd><kbd>Left</kbd><kbd>Right</kbd> keyboard steering fallback</div>
-        <div><kbd>LMB</kbd> desktop left-click time reversal pulse</div>
+        <div><kbd>LMB</kbd> desktop left-click reverse pulse, <kbd>tap screen</kbd> mobile reverse pulse</div>
         <div><kbd>W</kbd><kbd>S</kbd><kbd>Up</kbd><kbd>Down</kbd> zoom spacetime view (pinch to zoom on mobile)</div>
         <div><kbd>Space</kbd> time reversal (x-axis reflection: face into past direction)</div>
         <div><kbd>Pole wrap</kbd> crossing temporal seam auto-reflects time direction and remaps to antipodal hemisphere</div>
@@ -565,8 +541,8 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
 export default function App() {
   const canvasRef = useRef(null);
   const keys = useKeyboard();
-  const touchRef = useRef({ space: false });
-  const mouseRef = useRef({ axis: 0, active: false, reversePulse: false });
+  const touchRef = useRef({ reversePulse: false });
+  const mouseRef = useRef({ axis: 0, active: false, reversePulse: false, lastX: null, lastMoveAt: 0 });
   const motionRef = useRef({ axis: 0, active: false, requestPermission: null });
   const pinchRef = useRef({
     pointers: new Map(),
@@ -648,6 +624,9 @@ export default function App() {
     const onPointerDown = (e) => {
       if (e.pointerType !== 'touch') return;
       pinch.pointers.set(e.pointerId, pin(e));
+      if (pinch.pointers.size === 1) {
+        touchRef.current.reversePulse = true;
+      }
       if (pinch.pointers.size === 2) {
         const [a, b] = [...pinch.pointers.values()];
         pinch.startDistance = Math.hypot(b.x - a.x, b.y - a.y);
@@ -781,19 +760,31 @@ export default function App() {
       return applyDeadzone(shapeAxis(axis, MOUSE_AXIS_GAIN));
     };
 
+    const axisFromDeltaX = (deltaX) => {
+      const raw = deltaX / MOUSE_DELTA_PIXELS;
+      return applyDeadzone(shapeAxis(raw, MOUSE_AXIS_GAIN));
+    };
+
     const onPointerMove = (e) => {
       if (e.pointerType !== 'mouse') return;
       mouse.active = true;
-      mouse.axis = axisFromClientX(e.clientX);
+      const dx = Number.isFinite(mouse.lastX) ? e.clientX - mouse.lastX : 0;
+      mouse.lastX = e.clientX;
+      const axis = axisFromDeltaX(dx);
+      mouse.axis = mouse.axis * 0.32 + axis * 0.68;
+      mouse.lastMoveAt = performance.now();
     };
     const onPointerLeave = (e) => {
       if (e.pointerType !== 'mouse') return;
       mouse.active = false;
       mouse.axis = 0;
+      mouse.lastX = null;
     };
     const onPointerDown = (e) => {
       if (e.pointerType !== 'mouse') return;
       mouse.active = true;
+      mouse.lastX = e.clientX;
+      mouse.lastMoveAt = performance.now();
       mouse.axis = axisFromClientX(e.clientX);
       if (e.button === 0) {
         mouse.reversePulse = true;
@@ -818,7 +809,9 @@ export default function App() {
       window.removeEventListener('mouseleave', onWindowLeave);
       mouse.active = false;
       mouse.axis = 0;
+      mouse.lastX = null;
       mouse.reversePulse = false;
+      mouse.lastMoveAt = 0;
     };
   }, []);
 
@@ -832,19 +825,22 @@ export default function App() {
       last = now;
       const keySteerAxis = (keys.current.d ? 1 : 0) - (keys.current.a ? 1 : 0);
       const motionSteerAxis = isCoarsePointer && motionRef.current.active ? (motionRef.current.axis ?? 0) : 0;
-      const mouseSteerAxis = !isCoarsePointer && mouseRef.current.active ? (mouseRef.current.axis ?? 0) : 0;
+      const mouseRecent = (now - (mouseRef.current.lastMoveAt ?? 0)) < 120;
+      const mouseSteerAxis = !isCoarsePointer && mouseRef.current.active && mouseRecent ? (mouseRef.current.axis ?? 0) : 0;
       const preferredAxis = isCoarsePointer
         ? (Math.abs(motionSteerAxis) > 0.0001 ? motionSteerAxis : keySteerAxis)
         : (Math.abs(mouseSteerAxis) > 0.0001 ? mouseSteerAxis : keySteerAxis);
       const steerAxis = applyDeadzone(preferredAxis);
       const mouseReversePulse = !isCoarsePointer && mouseRef.current.reversePulse;
       mouseRef.current.reversePulse = false;
+      const touchReversePulse = isCoarsePointer && touchRef.current.reversePulse;
+      touchRef.current.reversePulse = false;
 
       const rawControls = {
         a: steerAxis < -STEER_DEADZONE,
         d: steerAxis > STEER_DEADZONE,
         steerAxis,
-        space: !!(keys.current.space || touchRef.current.space),
+        space: !!keys.current.space,
         zoomIn: !!keys.current.zoomIn,
         zoomOut: !!keys.current.zoomOut,
         p: !!keys.current.p,
@@ -852,7 +848,7 @@ export default function App() {
       };
       const controls = {
         ...rawControls,
-        spacePressed: (!!rawControls.space && !spaceLatch.current) || mouseReversePulse,
+        spacePressed: (!!rawControls.space && !spaceLatch.current) || mouseReversePulse || touchReversePulse,
       };
       spaceLatch.current = !!rawControls.space;
       const camera = cameraRef.current;
@@ -910,7 +906,6 @@ export default function App() {
       <LiveLeaderboard world={hudWorld} />
       <MinimapOverlay world={hudWorld} />
       {audioOpen && <AudioDock audioMix={audioMix} setAudioMix={setAudioMix} />}
-      <TouchControls touchRef={touchRef} />
       {isCoarsePointer && (
         <MobilePauseButton
           paused={hudWorld.paused}
