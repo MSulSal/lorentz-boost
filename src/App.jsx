@@ -177,7 +177,19 @@ function MinimapOverlay({ world }) {
   const cx = width * 0.5;
   const cy = 88;
   const r = 56;
-  const geom = { cx, cy, r, yaw: -0.78, pitch: 0.46, camDist: 4.8, frontDepthThreshold: 0 };
+  const playerU = normalizedWrapX(world.player?.pos?.x ?? 0, world.arenaX);
+  const playerV = clamp(world.finishT > 0 ? temporalPhase(world.player?.coordTime ?? world.t, world.finishT) / world.finishT : 0.5, 0, 1);
+  const playerLon = (playerU - 0.5) * Math.PI * 2;
+  const playerLat = (playerV - 0.5) * Math.PI;
+  const geom = {
+    cx,
+    cy,
+    r,
+    yaw: Math.PI * 0.5 - playerLon,
+    pitch: playerLat,
+    camDist: 4.8,
+    frontDepthThreshold: -0.02,
+  };
   const ranks = rankEntities(world);
   const placementById = new Map(ranks.map((r, idx) => [r.id, idx + 1]));
   const worldPhase = temporalPhase(world.player?.coordTime ?? world.t, world.finishT);
