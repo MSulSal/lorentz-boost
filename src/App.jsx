@@ -28,6 +28,18 @@ const RENDER_MIN_WIDTH = 320;
 const RENDER_MIN_HEIGHT = 180;
 const GAME_ASPECT = 16 / 9;
 const PINCH_DISTANCE_EPS = 6;
+const STEER_DEADZONE = 0.06;
+const TILT_AXIS_GAIN = 1 / 28;
+
+function isCoarsePointerDevice() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+}
+
+function applyDeadzone(axis, deadzone = STEER_DEADZONE) {
+  const a = clamp(axis, -1, 1);
+  return Math.abs(a) < deadzone ? 0 : a;
+}
 
 function renderBufferSize(canvas) {
   const displayWidth = canvas?.clientWidth ?? window.innerWidth ?? RENDER_MIN_WIDTH;
@@ -435,21 +447,21 @@ function AudioDock({ audioMix, setAudioMix }) {
 }
 
 function TouchControls({ touchRef }) {
-  const left = holdHandlers(touchRef, 'a');
-  const right = holdHandlers(touchRef, 'd');
   const reverse = holdHandlers(touchRef, 'space');
   return (
     <div className="touch-controls" aria-hidden="true">
-      <button type="button" className="touch-btn steer left" aria-label="Steer left boost" {...left}>
-        <span className="touch-icon rocket-left" aria-hidden="true">&#x1F680;</span>
-      </button>
       <button type="button" className="touch-btn reverse" aria-label="Flip time direction" {...reverse}>
         <span className="touch-icon rocket-flip" aria-hidden="true">&#x1F680;&#x21BB;</span>
       </button>
-      <button type="button" className="touch-btn steer right" aria-label="Steer right boost" {...right}>
-        <span className="touch-icon rocket-right" aria-hidden="true">&#x1F680;</span>
-      </button>
     </div>
+  );
+}
+
+function MobilePauseButton({ paused, onTogglePause }) {
+  return (
+    <button type="button" className="mobile-pause-btn" onClick={onTogglePause} aria-label={paused ? 'Resume simulation' : 'Pause simulation'}>
+      {paused ? 'RESUME' : 'PAUSE'}
+    </button>
   );
 }
 
@@ -499,7 +511,10 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
 
       <section className="panel controls">
         <h2>Controls</h2>
-        <div><kbd>A</kbd><kbd>D</kbd><kbd>Left</kbd><kbd>Right</kbd> Lorentz steering and fuel burn</div>
+        <div><kbd>Mouse</kbd> horizontal steering axis on desktop</div>
+        <div><kbd>Phone tilt</kbd> orientation steering axis on mobile (with keyboard fallback)</div>
+        <div><kbd>A</kbd><kbd>D</kbd><kbd>Left</kbd><kbd>Right</kbd> keyboard steering fallback</div>
+        <div><kbd>LMB</kbd> desktop left-click time reversal pulse</div>
         <div><kbd>W</kbd><kbd>S</kbd><kbd>Up</kbd><kbd>Down</kbd> zoom spacetime view (pinch to zoom on mobile)</div>
         <div><kbd>Space</kbd> time reversal (x-axis reflection: face into past direction)</div>
         <div><kbd>Pole wrap</kbd> crossing temporal seam auto-reflects time direction and remaps to antipodal hemisphere</div>
@@ -542,7 +557,9 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
 export default function App() {
   const canvasRef = useRef(null);
   const keys = useKeyboard();
-  const touchRef = useRef({ a: false, d: false, space: false });
+  const touchRef = useRef({ space: false });
+  const mouseRef = useRef({ axis: 0, active: false, reversePulse: false });
+  const motionRef = useRef({ axis: 0, active: false, requestPermission: null });
   const pinchRef = useRef({
     pointers: new Map(),
     startDistance: 0,
@@ -554,6 +571,7 @@ export default function App() {
   const pauseLatch = useRef(false);
   const teamLatch = useRef(false);
   const spaceLatch = useRef(false);
+  const [isCoarsePointer, setIsCoarsePointer] = useState(() => isCoarsePointerDevice());
   const [worldVersion, setWorldVersion] = useState(0);
   const [hudOpen, setHudOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
@@ -588,6 +606,7 @@ export default function App() {
     const armAudio = () => {
       startAudio(audioRef.current);
       applyAudioMix(audioRef.current, audioMixRef.current);
+      motionRef.current.requestPermission?.();
     };
     window.addEventListener('keydown', armAudio, { passive: true });
     window.addEventListener('pointerdown', armAudio, { passive: true });
@@ -596,6 +615,19 @@ export default function App() {
       window.removeEventListener('pointerdown', armAudio);
       destroyAudio(audioRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia('(hover: none) and (pointer: coarse)');
+    const update = () => setIsCoarsePointer(!!mq.matches);
+    update();
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', update);
+      return () => mq.removeEventListener('change', update);
+    }
+    mq.addListener?.(update);
+    return () => mq.removeListener?.(update);
   }, []);
 
   useEffect(() => {
@@ -654,6 +686,128 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const motion = motionRef.current;
+    const ctor = window.DeviceOrientationEvent;
+    if (!ctor) {
+      motion.requestPermission = null;
+      motion.active = false;
+      motion.axis = 0;
+      return undefined;
+    }
+
+    const readScreenAngle = () => {
+      const angle = window.screen?.orientation?.angle;
+      if (Number.isFinite(angle)) return Number(angle);
+      const legacy = window.orientation;
+      return Number.isFinite(legacy) ? Number(legacy) : 0;
+    };
+
+    const angleBucket = () => {
+      const a = ((readScreenAngle() % 360) + 360) % 360;
+      if (a >= 45 && a < 135) return 90;
+      if (a >= 135 && a < 225) return 180;
+      if (a >= 225 && a < 315) return 270;
+      return 0;
+    };
+
+    const axisFromOrientation = (beta, gamma) => {
+      const b = Number.isFinite(beta) ? beta : 0;
+      const g = Number.isFinite(gamma) ? gamma : 0;
+      const bucket = angleBucket();
+      if (bucket === 90) return -b * TILT_AXIS_GAIN;
+      if (bucket === 270) return b * TILT_AXIS_GAIN;
+      if (bucket === 180) return -g * TILT_AXIS_GAIN;
+      return g * TILT_AXIS_GAIN;
+    };
+
+    const onOrientation = (e) => {
+      if (!Number.isFinite(e?.beta) && !Number.isFinite(e?.gamma)) return;
+      const axis = applyDeadzone(axisFromOrientation(e.beta, e.gamma));
+      motion.axis = motion.axis * 0.72 + axis * 0.28;
+      motion.active = true;
+    };
+
+    let attached = false;
+    const attach = () => {
+      if (attached) return;
+      window.addEventListener('deviceorientation', onOrientation, true);
+      attached = true;
+    };
+
+    motion.requestPermission = async () => {
+      try {
+        if (typeof ctor.requestPermission === 'function') {
+          const result = await ctor.requestPermission();
+          if (result !== 'granted') return false;
+        }
+        attach();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    if (typeof ctor.requestPermission !== 'function') {
+      attach();
+    }
+
+    return () => {
+      if (attached) window.removeEventListener('deviceorientation', onOrientation, true);
+      motion.requestPermission = null;
+      motion.active = false;
+      motion.axis = 0;
+    };
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const mouse = mouseRef.current;
+
+    const axisFromClientX = (clientX) => {
+      const rect = canvas.getBoundingClientRect();
+      const half = Math.max(1, rect.width * 0.5);
+      const axis = (clientX - (rect.left + half)) / half;
+      return applyDeadzone(axis);
+    };
+
+    const onPointerMove = (e) => {
+      if (e.pointerType !== 'mouse') return;
+      mouse.active = true;
+      mouse.axis = axisFromClientX(e.clientX);
+    };
+    const onPointerLeave = (e) => {
+      if (e.pointerType !== 'mouse') return;
+      mouse.active = false;
+      mouse.axis = 0;
+    };
+    const onPointerDown = (e) => {
+      if (e.pointerType !== 'mouse') return;
+      mouse.active = true;
+      mouse.axis = axisFromClientX(e.clientX);
+      if (e.button === 0) {
+        mouse.reversePulse = true;
+        e.preventDefault();
+      }
+    };
+
+    canvas.addEventListener('pointermove', onPointerMove, { passive: true });
+    canvas.addEventListener('pointerleave', onPointerLeave, { passive: true });
+    canvas.addEventListener('pointercancel', onPointerLeave, { passive: true });
+    canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+    return () => {
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerleave', onPointerLeave);
+      canvas.removeEventListener('pointercancel', onPointerLeave);
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      mouse.active = false;
+      mouse.axis = 0;
+      mouse.reversePulse = false;
+    };
+  }, []);
+
+  useEffect(() => {
     let raf = 0;
     let last = performance.now();
     let frameCount = 0;
@@ -661,9 +815,20 @@ export default function App() {
     const loop = (now) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
+      const keySteerAxis = (keys.current.d ? 1 : 0) - (keys.current.a ? 1 : 0);
+      const motionSteerAxis = isCoarsePointer && motionRef.current.active ? (motionRef.current.axis ?? 0) : 0;
+      const mouseSteerAxis = !isCoarsePointer && mouseRef.current.active ? (mouseRef.current.axis ?? 0) : 0;
+      const preferredAxis = isCoarsePointer
+        ? (Math.abs(motionSteerAxis) > 0.0001 ? motionSteerAxis : keySteerAxis)
+        : (Math.abs(mouseSteerAxis) > 0.0001 ? mouseSteerAxis : keySteerAxis);
+      const steerAxis = applyDeadzone(preferredAxis);
+      const mouseReversePulse = !isCoarsePointer && mouseRef.current.reversePulse;
+      mouseRef.current.reversePulse = false;
+
       const rawControls = {
-        a: !!(keys.current.a || touchRef.current.a),
-        d: !!(keys.current.d || touchRef.current.d),
+        a: steerAxis < -STEER_DEADZONE,
+        d: steerAxis > STEER_DEADZONE,
+        steerAxis,
         space: !!(keys.current.space || touchRef.current.space),
         zoomIn: !!keys.current.zoomIn,
         zoomOut: !!keys.current.zoomOut,
@@ -672,7 +837,7 @@ export default function App() {
       };
       const controls = {
         ...rawControls,
-        spacePressed: !!rawControls.space && !spaceLatch.current,
+        spacePressed: (!!rawControls.space && !spaceLatch.current) || mouseReversePulse,
       };
       spaceLatch.current = !!rawControls.space;
       const camera = cameraRef.current;
@@ -719,7 +884,7 @@ export default function App() {
 
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [keys]);
+  }, [keys, isCoarsePointer]);
 
   const hudWorld = useMemo(() => worldRef.current, [worldVersion]);
 
@@ -731,6 +896,15 @@ export default function App() {
       <MinimapOverlay world={hudWorld} />
       {audioOpen && <AudioDock audioMix={audioMix} setAudioMix={setAudioMix} />}
       <TouchControls touchRef={touchRef} />
+      {isCoarsePointer && (
+        <MobilePauseButton
+          paused={hudWorld.paused}
+          onTogglePause={() => {
+            worldRef.current.paused = !worldRef.current.paused;
+            setWorldVersion((v) => v + 1);
+          }}
+        />
+      )}
       <div className="top-left-controls">
         <button
           className={`hud-toggle ${hudOpen ? 'open' : ''}`}

@@ -732,7 +732,10 @@ function tryRetroBoost(entity, world) {
 }
 
 function updatePlayerBoostAndSteer(player, controls, dt, world) {
-  const steerInput = (controls.d ? 1 : 0) - (controls.a ? 1 : 0);
+  const steerAxis = Number.isFinite(controls.steerAxis)
+    ? clamp(controls.steerAxis, -1, 1)
+    : (controls.d ? 1 : 0) - (controls.a ? 1 : 0);
+  const steerInput = Math.abs(steerAxis) < 0.04 ? 0 : steerAxis;
   const burn = Math.abs(steerInput) * FUEL_TURN_DRAIN * dt;
   const regen = FUEL_REGEN * dt;
   player.boostEnergy = clamp((player.boostEnergy ?? 0) + regen - burn, 0, FUEL_MAX);
