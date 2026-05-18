@@ -544,10 +544,23 @@ function drawRocketPixel(ctx, entity, state, world, camera, opts) {
   const alpha = 0.98;
   const contraction = opts.lengthContraction ? lengthContractionFactor(state.vel, world.player.vel) : 1;
   const speed = Math.abs(state.vel.x);
-  const facing = speed > 0.4 ? Math.sign(state.vel.x) : entity.facing || 1;
-  const dirX = facing >= 0 ? 1 : -1;
   const timeSign = (entity.timeDirection ?? 1) >= 0 ? 1 : -1;
-  const angleRaw = Math.atan2(-C * camera.zoom * timeSign, dirX * Math.max(3, speed * camera.zoom));
+  const coordTime = state.coordTime ?? state.t ?? world.t;
+  const lookAheadDt = 0.85;
+  const look = projectXT(
+    state.pos.x + state.vel.x * lookAheadDt,
+    coordTime + timeSign * lookAheadDt,
+    camera,
+  );
+  let dirScreenX = look.x - p.x;
+  let dirScreenY = look.y - p.y;
+  if (!Number.isFinite(dirScreenX) || !Number.isFinite(dirScreenY) || (Math.abs(dirScreenX) + Math.abs(dirScreenY) < 1e-5)) {
+    const fallbackFacing = Math.sign(state.vel.x) || entity.facing || 1;
+    // Screen-space x runs opposite wrapped-x around the centered sphere view.
+    dirScreenX = -fallbackFacing;
+    dirScreenY = -timeSign;
+  }
+  const angleRaw = Math.atan2(dirScreenY, dirScreenX);
   const angle = quantizeAngle(angleRaw);
   const hueShift = isSelf ? 0 : dopplerHueShiftForState(state, world, opts);
   const { primary, accent } = teamColors(entity, entity.hue);

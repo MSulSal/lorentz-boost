@@ -543,7 +543,7 @@ export default function App() {
   const keys = useKeyboard();
   const touchRef = useRef({ reversePulse: false });
   const mouseRef = useRef({ axis: 0, active: false, reversePulse: false, lastX: null, lastMoveAt: 0 });
-  const motionRef = useRef({ axis: 0, active: false, requestPermission: null });
+  const motionRef = useRef({ axis: 0, active: false, lastUpdateAt: 0, requestPermission: null });
   const pinchRef = useRef({
     pointers: new Map(),
     startDistance: 0,
@@ -710,10 +710,15 @@ export default function App() {
 
     const onOrientation = (e) => {
       if (!Number.isFinite(e?.beta) && !Number.isFinite(e?.gamma)) return;
-      const axisRaw = axisFromOrientation(e.beta, e.gamma);
+      const axisRaw = -axisFromOrientation(e.beta, e.gamma);
       const axis = applyDeadzone(shapeAxis(axisRaw));
-      motion.axis = motion.axis * 0.42 + axis * 0.58;
+      if (axis === 0) {
+        motion.axis = 0;
+      } else {
+        motion.axis = motion.axis * 0.32 + axis * 0.68;
+      }
       motion.active = true;
+      motion.lastUpdateAt = performance.now();
     };
 
     let attached = false;
@@ -745,6 +750,7 @@ export default function App() {
       motion.requestPermission = null;
       motion.active = false;
       motion.axis = 0;
+      motion.lastUpdateAt = 0;
     };
   }, []);
 

@@ -71,6 +71,7 @@ const POLE_FLIP_COOLDOWN = 0.72;
 const POLE_FLIP_COORDTIME_OFFSET = 0.36;
 const CAPTURE_SELF_TRAIL_GRACE = 0.32;
 const RETRO_SELF_TRAIL_GRACE = 0.36;
+const FACING_VELOCITY_EPS = 0.01;
 
 const COURSE_SAMPLE_DT = 1.25;
 const COURSE_LANE_WANDER = 220;
@@ -717,6 +718,13 @@ function updateRaceProgress(entity, prevUnwrappedX, currUnwrappedX, world) {
   void world;
 }
 
+function syncFacingFromVelocity(entity) {
+  if (!entity) return;
+  const vx = entity.vel?.x ?? 0;
+  if (Math.abs(vx) <= FACING_VELOCITY_EPS) return;
+  entity.facing = Math.sign(vx);
+}
+
 function tryRetroBoost(entity, world) {
   entity.timeDirection = (entity.timeDirection ?? 1) >= 0 ? -1 : 1;
   entity.retroReadyAt = world.t + RETRO_COOLDOWN;
@@ -744,9 +752,6 @@ function updatePlayerBoostAndSteer(player, controls, dt, world) {
 
   if (controls.spacePressed && world.t >= (player.retroReadyAt ?? 0)) {
     tryRetroBoost(player, world);
-  }
-  if (steerInput !== 0) {
-    player.facing = Math.sign(steerInput);
   }
   return v(accX, 0);
 }
@@ -791,7 +796,7 @@ function updateBot(bot, world, dt, prevXMap) {
   if (bot.vel.x > desiredSpeed + 10) accX -= BOT_BRAKE;
 
   integrateRelativistic(bot, v(accX, 0), dt, BOT_MAX_BETA);
-  if (bot.vel.x !== 0) bot.facing = Math.sign(bot.vel.x);
+  syncFacingFromVelocity(bot);
 
   // prevXMap read is intentional for future bot prediction tuning.
   void prevXMap;
@@ -1228,9 +1233,7 @@ export function stepWorld(world, controls, rawDt) {
   if (isEntityActive(world.player)) {
     const pAcc = updatePlayerBoostAndSteer(world.player, controls, dt, world);
     integrateRelativistic(world.player, pAcc, dt, PLAYER_MAX_BETA);
-    if (world.player.vel.x !== 0 && Math.abs(world.player.vel.x) > 2) {
-      world.player.facing = Math.sign(world.player.vel.x);
-    }
+    syncFacingFromVelocity(world.player);
     wrapPoint(world.player.pos);
   }
 
@@ -1279,6 +1282,7 @@ export function stepWorld(world, controls, rawDt) {
         e.coordTime ?? world.t,
       );
     }
+    syncFacingFromVelocity(e);
     pushHistory(e, world.t);
   }
 
