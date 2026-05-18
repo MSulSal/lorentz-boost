@@ -70,6 +70,7 @@ const EVENT_SPEED_BOOST_PER_ENERGY = 0.52;
 const POLE_FLIP_COOLDOWN = 0.72;
 const POLE_FLIP_COORDTIME_OFFSET = 0.36;
 const CAPTURE_SELF_TRAIL_GRACE = 0.32;
+const RETRO_SELF_TRAIL_GRACE = 0.36;
 
 const COURSE_SAMPLE_DT = 1.25;
 const COURSE_LANE_WANDER = 220;
@@ -528,6 +529,7 @@ function makeEntity(id, name, kind, x, team, initialVx = 0, timeDirection = 1, i
     retroReadyAt: 0,
     nextPoleFlipAt: 0,
     recentCaptureUntil: 0,
+    selfTrailGraceUntil: 0,
     kills: 0,
     deaths: 0,
     fleetRescues: 0,
@@ -718,7 +720,8 @@ function updateRaceProgress(entity, prevUnwrappedX, currUnwrappedX, world) {
 function tryRetroBoost(entity, world) {
   entity.timeDirection = (entity.timeDirection ?? 1) >= 0 ? -1 : 1;
   entity.retroReadyAt = world.t + RETRO_COOLDOWN;
-  entity.invulnerableUntil = Math.max(entity.invulnerableUntil, world.t + 0.12);
+  entity.selfTrailGraceUntil = Math.max(entity.selfTrailGraceUntil ?? 0, world.t + RETRO_SELF_TRAIL_GRACE);
+  entity.invulnerableUntil = Math.max(entity.invulnerableUntil, world.t + 0.2);
   emitFlash(world, {
     type: 'retro',
     x: entity.pos.x,
@@ -1031,7 +1034,10 @@ function resolveTailKills(world, prevXMap, prevCoordTimeMap, currSimT) {
 
     for (const trail of world.trails) {
       if (currSimT < trail.armT || currSimT > trail.expireT) continue;
-      if (trail.ownerId === victim.id && currSimT < (victim.recentCaptureUntil ?? 0)) continue;
+      if (trail.ownerId === victim.id) {
+        const selfTrailGraceUntil = Math.max(victim.recentCaptureUntil ?? 0, victim.selfTrailGraceUntil ?? 0);
+        if (currSimT < selfTrailGraceUntil) continue;
+      }
 
       const victimMid = (prevUnwrappedX + currUnwrappedX) * 0.5;
       const trailDelta = wrappedDelta(trail.x1, trail.x0);
