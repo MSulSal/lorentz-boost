@@ -162,11 +162,12 @@ function spherePointFromXT(x, t, world, geom) {
   const y1 = sy * cosPitch - z1 * sinPitch;
   const z2 = sy * sinPitch + z1 * cosPitch;
 
-  const fish = 1 + 0.18 * Math.max(0, z2) * Math.max(0, z2);
+  const perspective = geom.camDist / Math.max(0.2, geom.camDist - z2);
   return {
-    px: geom.cx + geom.r * x1 * fish,
-    py: geom.cy - geom.r * y1 * fish,
+    px: geom.cx + geom.r * x1 * perspective,
+    py: geom.cy - geom.r * y1 * perspective,
     depth: z2,
+    front: z2 >= (geom.frontDepthThreshold ?? 0),
   };
 }
 
@@ -176,16 +177,14 @@ function MinimapOverlay({ world }) {
   const cx = width * 0.5;
   const cy = 88;
   const r = 56;
-  const geom = { cx, cy, r, yaw: -0.78, pitch: 0.46 };
+  const geom = { cx, cy, r, yaw: -0.78, pitch: 0.46, camDist: 4.8, frontDepthThreshold: 0 };
   const ranks = rankEntities(world);
   const placementById = new Map(ranks.map((r, idx) => [r.id, idx + 1]));
   const worldPhase = temporalPhase(world.player?.coordTime ?? world.t, world.finishT);
   const playerTimeDir = world.player?.timeDirection ?? 1;
   const playerTimeLabel = playerTimeDir >= 0 ? '+t' : '-t';
 
-  const wallBack = [];
   const wallFront = [];
-  const islandBack = [];
   const islandFront = [];
   if (world.course?.walls?.length) {
     for (const wall of world.course.walls) {
@@ -197,7 +196,7 @@ function MinimapOverlay({ world }) {
         if (Math.abs(b.x - a.x) > world.arenaX) continue;
         const pa = spherePointFromXT(a.x, a.t, world, geom);
         const pb = spherePointFromXT(b.x, b.t, world, geom);
-        const front = (pa.depth + pb.depth) * 0.5 >= 0;
+        const front = pa.front && pb.front;
         const seg = {
           key: `${wall.id}-${i}`,
           x1: pa.px,
@@ -206,7 +205,7 @@ function MinimapOverlay({ world }) {
           y2: pb.py,
           hue: wall.hue,
         };
-        (front ? wallFront : wallBack).push(seg);
+        if (front) wallFront.push(seg);
       }
     }
   }
@@ -221,11 +220,10 @@ function MinimapOverlay({ world }) {
         r,
         hue: island.hue,
       };
-      (p.depth >= 0 ? islandFront : islandBack).push(bubble);
+      if (p.front) islandFront.push(bubble);
     }
   }
 
-  const worldlineBack = [];
   const worldlineFront = [];
   for (const entity of world.entities) {
     const hist = entity.history ?? [];
@@ -237,7 +235,7 @@ function MinimapOverlay({ world }) {
       if (Math.abs(b.pos.x - a.pos.x) > world.arenaX) continue;
       const pa = spherePointFromXT(a.pos.x, a.coordTime ?? a.t, world, geom);
       const pb = spherePointFromXT(b.pos.x, b.coordTime ?? b.t, world, geom);
-      const front = (pa.depth + pb.depth) * 0.5 >= 0;
+      const front = pa.front && pb.front;
       const seg = {
         key: `${entity.id}-${i}`,
         x1: pa.px,
@@ -251,7 +249,7 @@ function MinimapOverlay({ world }) {
         ),
         w: entity.id === world.player.id ? 1.7 : 1.1,
       };
-      (front ? worldlineFront : worldlineBack).push(seg);
+      if (front) worldlineFront.push(seg);
     }
   }
 
@@ -260,10 +258,11 @@ function MinimapOverlay({ world }) {
       const p = spherePointFromXT(entity.pos.x, entity.coordTime ?? world.t, world, geom);
       const px = p.px;
       const py = p.py;
-      const front = p.depth >= 0;
+      const front = p.front;
       const hue = (entity.team?.primaryHue ?? entity.hue) + dopplerHueShift1D(entity.pos.x, entity.vel.x, world);
       return { entity, px, py, front, hue, inactive: !!entity.isRespawning };
     })
+    .filter((p) => p.front)
     .sort((a, b) => {
       if (a.front === b.front) return a.py - b.py;
       return a.front ? 1 : -1;
@@ -279,34 +278,6 @@ function MinimapOverlay({ world }) {
             <stop offset="100%" stopColor="rgba(50, 112, 162, 0.08)" />
           </radialGradient>
         </defs>
-
-        {wallBack.map((seg) => (
-          <line
-            key={seg.key}
-            x1={seg.x1}
-            y1={seg.y1}
-            x2={seg.x2}
-            y2={seg.y2}
-            stroke={hueColor(seg.hue, 0.54)}
-            strokeWidth={2.1}
-            strokeLinecap="round"
-          />
-        ))}
-        {islandBack.map((b) => (
-          <circle key={b.key} cx={b.x} cy={b.y} r={b.r} fill={hueColor(b.hue, 0.48)} stroke={hueColor(b.hue + 8, 0.6)} strokeWidth="0.8" />
-        ))}
-        {worldlineBack.map((seg) => (
-          <line
-            key={seg.key}
-            x1={seg.x1}
-            y1={seg.y1}
-            x2={seg.x2}
-            y2={seg.y2}
-            stroke={hueColor(seg.hue, 0.92)}
-            strokeWidth={seg.w}
-            strokeLinecap="round"
-          />
-        ))}
 
         <circle cx={cx} cy={cy} r={r} fill="url(#sphereFill)" stroke="rgba(138, 228, 255, 0.58)" strokeWidth="1.5" />
         <ellipse cx={cx} cy={cy} rx={r * 0.98} ry={r * 0.42} fill="none" stroke="rgba(132, 224, 255, 0.28)" strokeWidth="1.2" />

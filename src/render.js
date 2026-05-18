@@ -14,6 +14,7 @@ const MIN_RENDER_WIDTH = 320;
 const MIN_RENDER_HEIGHT = 180;
 const GAME_ASPECT = 16 / 9;
 const TAU = Math.PI * 2;
+const OUTSIDE_CAM_DIST = 4.8;
 const MAX_FORMATION_VISUAL_SHIPS = 28;
 const FORMATION_BACK_STEP = 8;
 const FORMATION_SIDE_STEP = 6;
@@ -113,12 +114,14 @@ function projectSphere(x, t, camera) {
   const y1 = sy * cosPitch - z1 * sinPitch;
   const z2 = sy * sinPitch + z1 * cosPitch;
 
-  const depthScale = 0.82 + 0.18 * ((z2 + 1) * 0.5);
-  const r = camera.sphereRadius * depthScale;
+  const perspective = camera.outsideCamDist / Math.max(0.2, camera.outsideCamDist - z2);
+  const r = camera.sphereRadius * perspective;
 
   return {
     x: camera.width * 0.5 + x1 * r,
     y: camera.height * 0.5 - y1 * r,
+    depth: z2,
+    front: z2 >= camera.frontDepthThreshold,
   };
 }
 
@@ -128,6 +131,10 @@ function projectXT(x, t, camera) {
 
 function visibleOnCanvas(p, camera, margin = 120) {
   return p.x > -margin && p.y > -margin && p.x < camera.width + margin && p.y < camera.height + margin;
+}
+
+function visibleOutsideSphere(p) {
+  return !!p?.front;
 }
 
 function teamColors(entity, fallbackHue) {
@@ -222,16 +229,29 @@ function drawGrid(ctx, world, camera) {
   const tFromV = (v) => v * finishT;
 
   const strokeParamLine = (uFixed, vFixed, lon) => {
-    ctx.beginPath();
+    let open = false;
     for (let i = 0; i <= steps; i++) {
       const s = i / steps;
       const u = lon ? uFixed : s;
       const v = lon ? s : vFixed;
       const p = projectXT(xFromU(u), tFromV(v), camera);
-      if (i === 0) ctx.moveTo(snap(p.x), snap(p.y));
-      else ctx.lineTo(snap(p.x), snap(p.y));
+      const front = visibleOutsideSphere(p);
+      if (!front) {
+        if (open) {
+          ctx.stroke();
+          open = false;
+        }
+        continue;
+      }
+      if (!open) {
+        ctx.beginPath();
+        ctx.moveTo(snap(p.x), snap(p.y));
+        open = true;
+      } else {
+        ctx.lineTo(snap(p.x), snap(p.y));
+      }
     }
-    ctx.stroke();
+    if (open) ctx.stroke();
   };
 
   ctx.save();
@@ -260,14 +280,25 @@ function drawLightCones(ctx, world, camera) {
 
   const drawConeBranch = (sign, future) => {
     const timeSign = future ? 1 : -1;
-    ctx.beginPath();
-    ctx.moveTo(snap(origin.x), snap(origin.y));
+    let open = false;
     for (let i = 1; i <= steps; i++) {
       const dt = (i / steps) * coneSpan * timeSign;
       const p = projectXT(world.player.pos.x + sign * C * dt, coordNow + dt, camera);
+      if (!visibleOutsideSphere(p)) {
+        if (open) {
+          ctx.stroke();
+          open = false;
+        }
+        continue;
+      }
+      if (!open) {
+        ctx.beginPath();
+        ctx.moveTo(snap(origin.x), snap(origin.y));
+        open = true;
+      }
       ctx.lineTo(snap(p.x), snap(p.y));
     }
-    ctx.stroke();
+    if (open) ctx.stroke();
   };
 
   ctx.save();
@@ -297,6 +328,7 @@ function drawCourse(ctx, world, camera) {
       for (const shift of [-1, 0, 1]) {
         const x = island.x + shift * trackSpan;
         const p = projectXT(x, island.t, camera);
+        if (!visibleOutsideSphere(p)) continue;
         if (!visibleOnCanvas(p, camera, 220 + rx)) continue;
         ctx.fillStyle = hsl(hue, 72, island.mass > 0 ? 26 : 34, 0.16 + nearNow * 0.16);
         ctx.beginPath();
@@ -327,6 +359,7 @@ function drawCourse(ctx, world, camera) {
         if (Math.abs(a.x - b.x) > world.arenaX) continue;
         const pa = projectXT(a.x, a.t, camera);
         const pb = projectXT(b.x, b.t, camera);
+        if (!visibleOutsideSphere(pa) || !visibleOutsideSphere(pb)) continue;
         if (!visibleOnCanvas(pa, camera, 180) && !visibleOnCanvas(pb, camera, 180)) continue;
 
         ctx.strokeStyle = hsl(wall.hue, 86, 30, 0.42);
@@ -354,6 +387,7 @@ function drawEnergyEvents(ctx, world, camera) {
   ctx.save();
   for (const ev of world.energyEvents) {
     const p = projectXT(ev.x, ev.eventT, camera);
+    if (!visibleOutsideSphere(p)) continue;
     if (!visibleOnCanvas(p, camera, 110)) continue;
     const dt = ev.eventT - camera.now;
     const future = dt >= 0;
@@ -379,6 +413,7 @@ function drawTrails(ctx, world, camera) {
   for (const tr of world.trails) {
     const start = projectXT(tr.x0, tr.t0, camera);
     const end = projectXT(tr.x1, tr.t1, camera);
+    if (!visibleOutsideSphere(start) || !visibleOutsideSphere(end)) continue;
     if (!visibleOnCanvas(start, camera, 120) && !visibleOnCanvas(end, camera, 120)) continue;
     const ttl = Math.max(0.001, tr.expireT - tr.bornT);
     const age = world.t - tr.bornT;
@@ -411,6 +446,7 @@ function drawFlashes(ctx, world, camera) {
   for (const f of world.flashes) {
     const age = world.t - f.t;
     const p = projectXT(f.x, f.t, camera);
+    if (!visibleOutsideSphere(p)) continue;
     if (!visibleOnCanvas(p, camera, 120)) continue;
     let hue = f.hue ?? 200;
     if (f.type === 'tail-kill') hue += 25;
@@ -441,6 +477,7 @@ function drawWorldline(ctx, entity, world, camera, opts, isSelf) {
     const age = world.t - h.t;
     if (age > maxAge) break;
     const p = projectXT(h.pos.x, h.coordTime ?? h.t, camera);
+    if (!visibleOutsideSphere(p)) continue;
     if (!visibleOnCanvas(p, camera, 180)) continue;
     samples.push({ h, p });
   }
@@ -501,6 +538,7 @@ function fleetFormationSlots(shipCount) {
 
 function drawRocketPixel(ctx, entity, state, world, camera, opts) {
   const p = projectXT(state.pos.x, state.coordTime ?? state.t, camera);
+  if (!visibleOutsideSphere(p)) return;
   if (!visibleOnCanvas(p, camera, 180)) return;
   const isSelf = entity.id === world.player.id;
   const alpha = 0.98;
@@ -589,6 +627,7 @@ function drawTangent(ctx, world, camera) {
   const dtMag = 0.9;
   const timeSign = (p.timeDirection ?? 1) >= 0 ? 1 : -1;
   const tip = projectXT(p.pos.x + p.vel.x * dtMag, coordNow + dtMag * timeSign, camera);
+  if (!visibleOutsideSphere(origin) && !visibleOutsideSphere(tip)) return;
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.8)';
   ctx.lineWidth = 1;
@@ -613,6 +652,8 @@ function makeCamera(displayWidth, displayHeight, world, cameraState) {
   const spherePitch = playerLat;
   const sphereFitRadius = Math.min(displayWidth, displayHeight) * 0.39;
   const sphereRadius = sphereFitRadius * (1 + zoomT * 10);
+  const outsideCamDist = OUTSIDE_CAM_DIST;
+  const frontDepthThreshold = 0;
   const zoom = rawZoom;
 
   return {
@@ -630,6 +671,8 @@ function makeCamera(displayWidth, displayHeight, world, cameraState) {
     sphereYaw,
     spherePitch,
     sphereRadius,
+    outsideCamDist,
+    frontDepthThreshold,
   };
 }
 
