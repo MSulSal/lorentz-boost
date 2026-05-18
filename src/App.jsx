@@ -28,8 +28,10 @@ const RENDER_MIN_WIDTH = 320;
 const RENDER_MIN_HEIGHT = 180;
 const GAME_ASPECT = 16 / 9;
 const PINCH_DISTANCE_EPS = 6;
-const STEER_DEADZONE = 0.06;
-const TILT_AXIS_GAIN = 1 / 28;
+const STEER_DEADZONE = 0.018;
+const TILT_AXIS_GAIN = 1 / 18;
+const MOUSE_AXIS_GAIN = 1.45;
+const AXIS_CURVE = 0.68;
 
 function isCoarsePointerDevice() {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -39,6 +41,12 @@ function isCoarsePointerDevice() {
 function applyDeadzone(axis, deadzone = STEER_DEADZONE) {
   const a = clamp(axis, -1, 1);
   return Math.abs(a) < deadzone ? 0 : a;
+}
+
+function shapeAxis(axis, gain = 1, curve = AXIS_CURVE) {
+  const sign = Math.sign(axis) || 1;
+  const mag = clamp(Math.abs(axis) * gain, 0, 1);
+  return sign * Math.pow(mag, curve);
 }
 
 function renderBufferSize(canvas) {
@@ -723,8 +731,9 @@ export default function App() {
 
     const onOrientation = (e) => {
       if (!Number.isFinite(e?.beta) && !Number.isFinite(e?.gamma)) return;
-      const axis = applyDeadzone(axisFromOrientation(e.beta, e.gamma));
-      motion.axis = motion.axis * 0.72 + axis * 0.28;
+      const axisRaw = axisFromOrientation(e.beta, e.gamma);
+      const axis = applyDeadzone(shapeAxis(axisRaw));
+      motion.axis = motion.axis * 0.42 + axis * 0.58;
       motion.active = true;
     };
 
@@ -762,14 +771,14 @@ export default function App() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return undefined;
+    if (!canvas || typeof window === 'undefined') return undefined;
     const mouse = mouseRef.current;
 
     const axisFromClientX = (clientX) => {
       const rect = canvas.getBoundingClientRect();
       const half = Math.max(1, rect.width * 0.5);
       const axis = (clientX - (rect.left + half)) / half;
-      return applyDeadzone(axis);
+      return applyDeadzone(shapeAxis(axis, MOUSE_AXIS_GAIN));
     };
 
     const onPointerMove = (e) => {
@@ -791,16 +800,22 @@ export default function App() {
         e.preventDefault();
       }
     };
+    const onWindowLeave = () => {
+      mouse.active = false;
+      mouse.axis = 0;
+    };
 
-    canvas.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
     canvas.addEventListener('pointerleave', onPointerLeave, { passive: true });
     canvas.addEventListener('pointercancel', onPointerLeave, { passive: true });
     canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+    window.addEventListener('mouseleave', onWindowLeave, { passive: true });
     return () => {
-      canvas.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerleave', onPointerLeave);
       canvas.removeEventListener('pointercancel', onPointerLeave);
       canvas.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('mouseleave', onWindowLeave);
       mouse.active = false;
       mouse.axis = 0;
       mouse.reversePulse = false;

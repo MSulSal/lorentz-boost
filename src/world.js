@@ -735,7 +735,7 @@ function updatePlayerBoostAndSteer(player, controls, dt, world) {
   const steerAxis = Number.isFinite(controls.steerAxis)
     ? clamp(controls.steerAxis, -1, 1)
     : (controls.d ? 1 : 0) - (controls.a ? 1 : 0);
-  const steerInput = Math.abs(steerAxis) < 0.04 ? 0 : steerAxis;
+  const steerInput = Math.abs(steerAxis) < 0.015 ? 0 : clamp(steerAxis * 1.75, -1, 1);
   const burn = Math.abs(steerInput) * FUEL_TURN_DRAIN * dt;
   const regen = FUEL_REGEN * dt;
   player.boostEnergy = clamp((player.boostEnergy ?? 0) + regen - burn, 0, FUEL_MAX);
