@@ -697,10 +697,13 @@ function fitGameRect(displayWidth, displayHeight) {
   const viewAspect = displayWidth / Math.max(1, displayHeight);
   let width = displayWidth;
   let height = displayHeight;
+  // "Cover" fit: preserve game aspect without stretching, but fully cover viewport.
   if (viewAspect > GAME_ASPECT) {
-    width = height * GAME_ASPECT;
-  } else {
+    width = displayWidth;
     height = width / GAME_ASPECT;
+  } else {
+    height = displayHeight;
+    width = height * GAME_ASPECT;
   }
   return {
     x: (displayWidth - width) * 0.5,
