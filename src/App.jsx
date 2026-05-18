@@ -499,7 +499,7 @@ function Hud({ world, opts, setOpts, onTogglePause, onCycleTeam }) {
         <div><kbd>Phone tilt</kbd> rotate right/left to steer right/left on mobile</div>
         <div><kbd>A</kbd><kbd>D</kbd><kbd>Left</kbd><kbd>Right</kbd> keyboard steering fallback</div>
         <div><kbd>LMB</kbd> desktop left-click reverse pulse, <kbd>tap screen</kbd> mobile reverse pulse</div>
-        <div><kbd>W</kbd><kbd>S</kbd><kbd>Up</kbd><kbd>Down</kbd> zoom spacetime view (pinch to zoom on mobile)</div>
+        <div><kbd>W</kbd><kbd>S</kbd><kbd>Up</kbd><kbd>Down</kbd> or <kbd>mouse wheel</kbd> zoom spacetime view (pinch to zoom on mobile)</div>
         <div><kbd>Space</kbd> time reversal (x-axis reflection: face into past direction)</div>
         <div><kbd>Pole wrap</kbd> crossing temporal seam auto-reflects time direction and remaps to antipodal hemisphere</div>
         <div><kbd>Combat</kbd> all worldlines kill, including your own (paradox loops)</div>
@@ -669,6 +669,27 @@ export default function App() {
       canvas.removeEventListener('pointercancel', onPointerUp);
       canvas.removeEventListener('pointerleave', onPointerUp);
       pinch.pointers.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+
+    const onWheel = (e) => {
+      const deltaY = Number.isFinite(e.deltaY) ? e.deltaY : 0;
+      if (deltaY === 0) return;
+      const zoomBounds = zoomBoundsFor(worldRef.current, canvas);
+      const direction = deltaY < 0 ? 1 : -1;
+      const strength = clamp(Math.abs(deltaY) / 120, 0.2, 3.2);
+      const zoomScale = Math.exp(direction * CAMERA_ZOOM_KEY_SPEED * 0.12 * strength);
+      cameraRef.current.zoom = clamp(cameraRef.current.zoom * zoomScale, zoomBounds.min, zoomBounds.max);
+      e.preventDefault();
+    };
+
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      canvas.removeEventListener('wheel', onWheel);
     };
   }, []);
 
