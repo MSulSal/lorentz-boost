@@ -823,7 +823,7 @@ export default function App() {
     const loop = (now) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      const keySteerAxis = (keys.current.d ? 1 : 0) - (keys.current.a ? 1 : 0);
+      const keySteerAxis = (keys.current.a ? 1 : 0) - (keys.current.d ? 1 : 0);
       const motionSteerAxis = isCoarsePointer && motionRef.current.active ? (motionRef.current.axis ?? 0) : 0;
       const mouseRecent = (now - (mouseRef.current.lastMoveAt ?? 0)) < 120;
       const mouseSteerAxis = !isCoarsePointer && mouseRef.current.active && mouseRecent ? (mouseRef.current.axis ?? 0) : 0;
