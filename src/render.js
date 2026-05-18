@@ -10,6 +10,7 @@ import {
 const NOW_Y_RATIO = 0.5;
 const PIX = 1;
 const PIXEL_SCALE = 3;
+const PIXEL_SCALE_MIN = 1.35;
 const MIN_RENDER_WIDTH = 320;
 const MIN_RENDER_HEIGHT = 180;
 const GAME_ASPECT = 16 / 9;
@@ -658,17 +659,17 @@ function makeCamera(displayWidth, displayHeight, world, cameraState) {
   const minZoom = Math.max(0.001, cameraState.minZoom ?? 1);
   const maxZoom = Math.max(minZoom + 0.001, cameraState.maxZoom ?? Math.max(minZoom + 0.001, rawZoom));
   const zoomT = clamp((rawZoom - minZoom) / (maxZoom - minZoom), 0, 1);
-  const zoomRatio = Math.max(1, rawZoom / minZoom);
   const finishT = Math.max(1, world.finishT ?? 1);
   const playerLon = (normalizedWrap01(world.player?.pos?.x ?? 0, world.arenaX) - 0.5) * TAU;
   const playerLat = (temporalPhase01(world.player?.coordTime ?? world.t, finishT) - 0.5) * Math.PI;
   const sphereYaw = Math.PI * 0.5 - playerLon;
   const spherePitch = playerLat;
   const sphereFitRadius = Math.min(displayWidth, displayHeight) * 0.39;
-  const sphereRadius = sphereFitRadius * (1 + 2.2 * Math.pow(zoomRatio, 1.18));
+  // At min zoom we show the whole sphere; at max zoom we approach a local Euclidean patch.
+  const sphereRadius = sphereFitRadius * Math.exp(zoomT * 4.7);
   const outsideCamDist = OUTSIDE_CAM_DIST;
   const frontDepthThreshold = 0;
-  const zoom = clamp(0.88 * Math.pow(zoomRatio, 0.58), 0.88, 3.1);
+  const zoom = clamp(0.88 + Math.pow(zoomT, 0.82) * 3.4, 0.88, 4.5);
 
   return {
     originX: cameraState.x ?? 0,
@@ -725,10 +726,11 @@ function fitGameRect(displayWidth, displayHeight) {
   };
 }
 
-function ensurePixelBuffer(fitWidth, fitHeight) {
-  let targetWidth = Math.max(MIN_RENDER_WIDTH, Math.floor(fitWidth / PIXEL_SCALE));
+function ensurePixelBuffer(fitWidth, fitHeight, pixelScale = PIXEL_SCALE) {
+  const scale = clamp(pixelScale, PIXEL_SCALE_MIN, PIXEL_SCALE);
+  let targetWidth = Math.max(MIN_RENDER_WIDTH, Math.floor(fitWidth / scale));
   let targetHeight = Math.max(MIN_RENDER_HEIGHT, Math.round(targetWidth / GAME_ASPECT));
-  const heightFromFit = Math.max(MIN_RENDER_HEIGHT, Math.floor(fitHeight / PIXEL_SCALE));
+  const heightFromFit = Math.max(MIN_RENDER_HEIGHT, Math.floor(fitHeight / scale));
   if (heightFromFit > targetHeight) {
     targetHeight = heightFromFit;
     targetWidth = Math.max(MIN_RENDER_WIDTH, Math.round(targetHeight * GAME_ASPECT));
@@ -777,7 +779,13 @@ function buildRenderQueue(world) {
 export function renderWorld(canvas, world, cameraState, opts) {
   const display = resizeDisplayCanvas(canvas);
   const fit = fitGameRect(display.displayWidth, display.displayHeight);
-  const pixel = ensurePixelBuffer(fit.width, fit.height);
+  const rawZoom = cameraState.zoom ?? 1;
+  const minZoom = Math.max(0.001, cameraState.minZoom ?? 1);
+  const maxZoom = Math.max(minZoom + 0.001, cameraState.maxZoom ?? (minZoom + 1));
+  const zoomT = clamp((rawZoom - minZoom) / (maxZoom - minZoom), 0, 1);
+  // Reduce chunky pixelation as users zoom in so art polish stays intact.
+  const dynamicPixelScale = clamp(PIXEL_SCALE - zoomT * 1.65, PIXEL_SCALE_MIN, PIXEL_SCALE);
+  const pixel = ensurePixelBuffer(fit.width, fit.height, dynamicPixelScale);
   const camera = makeCamera(pixel.width, pixel.height, world, cameraState);
   const ctx = pixel.ctx;
 

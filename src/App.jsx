@@ -20,8 +20,8 @@ const keyMap = {
 };
 
 const CAMERA_ZOOM_DEFAULT = 1.9;
-const CAMERA_ZOOM_MAX = 8.0;
-const CAMERA_ZOOM_MIN_FALLBACK = 1.0;
+const CAMERA_ZOOM_MAX = 10.0;
+const CAMERA_ZOOM_MIN_FALLBACK = 0.28;
 const CAMERA_ZOOM_KEY_SPEED = 1.9;
 const RENDER_PIXEL_SCALE = 3;
 const RENDER_MIN_WIDTH = 320;
@@ -33,6 +33,7 @@ const TILT_AXIS_GAIN = 1 / 18;
 const MOUSE_AXIS_GAIN = 1.95;
 const MOUSE_DELTA_PIXELS = 26;
 const AXIS_CURVE = 0.68;
+const MOTION_AXIS_RECENT_MS = 240;
 
 function isCoarsePointerDevice() {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -851,16 +852,17 @@ export default function App() {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const keySteerAxis = (keys.current.a ? 1 : 0) - (keys.current.d ? 1 : 0);
-      const motionSteerAxis = isCoarsePointer && motionRef.current.active ? (motionRef.current.axis ?? 0) : 0;
+      const motionRecent = (now - (motionRef.current.lastUpdateAt ?? 0)) < MOTION_AXIS_RECENT_MS;
+      const motionSteerAxis = motionRef.current.active && motionRecent ? (motionRef.current.axis ?? 0) : 0;
       const mouseRecent = (now - (mouseRef.current.lastMoveAt ?? 0)) < 120;
       const mouseSteerAxis = !isCoarsePointer && mouseRef.current.active && mouseRecent ? (mouseRef.current.axis ?? 0) : 0;
-      const preferredAxis = isCoarsePointer
-        ? (Math.abs(motionSteerAxis) > 0.0001 ? motionSteerAxis : keySteerAxis)
+      const preferredAxis = Math.abs(motionSteerAxis) > 0.0001
+        ? motionSteerAxis
         : (Math.abs(mouseSteerAxis) > 0.0001 ? mouseSteerAxis : keySteerAxis);
       const steerAxis = applyDeadzone(preferredAxis);
       const mouseReversePulse = !isCoarsePointer && mouseRef.current.reversePulse;
       mouseRef.current.reversePulse = false;
-      const touchReversePulse = isCoarsePointer && touchRef.current.reversePulse;
+      const touchReversePulse = touchRef.current.reversePulse;
       touchRef.current.reversePulse = false;
 
       const rawControls = {

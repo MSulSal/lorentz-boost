@@ -70,7 +70,7 @@ const EVENT_SPEED_BOOST_PER_ENERGY = 0.52;
 const POLE_FLIP_COOLDOWN = 0.72;
 const POLE_FLIP_COORDTIME_OFFSET = 0.36;
 const CAPTURE_SELF_TRAIL_GRACE = 0.32;
-const RETRO_SELF_TRAIL_GRACE = 0.36;
+const RETRO_SELF_TRAIL_GRACE = 1.2;
 const FACING_VELOCITY_EPS = 0.01;
 
 const COURSE_SAMPLE_DT = 1.25;
@@ -729,7 +729,9 @@ function tryRetroBoost(entity, world) {
   entity.timeDirection = (entity.timeDirection ?? 1) >= 0 ? -1 : 1;
   entity.retroReadyAt = world.t + RETRO_COOLDOWN;
   entity.selfTrailGraceUntil = Math.max(entity.selfTrailGraceUntil ?? 0, world.t + RETRO_SELF_TRAIL_GRACE);
-  entity.invulnerableUntil = Math.max(entity.invulnerableUntil, world.t + 0.2);
+  entity.invulnerableUntil = Math.max(entity.invulnerableUntil, world.t + 0.48);
+  // Prevent an instant cusp segment at reversal from counting as a paradox hit.
+  entity.lastTrailAt = world.t;
   emitFlash(world, {
     type: 'retro',
     x: entity.pos.x,
