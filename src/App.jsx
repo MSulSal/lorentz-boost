@@ -19,8 +19,8 @@ const keyMap = {
   KeyT: 't',
 };
 
-const CAMERA_ZOOM_DEFAULT = 1.8;
-const CAMERA_ZOOM_MAX = 4.0;
+const CAMERA_ZOOM_DEFAULT = 1.9;
+const CAMERA_ZOOM_MAX = 8.0;
 const CAMERA_ZOOM_MIN_FALLBACK = 1.0;
 const CAMERA_ZOOM_KEY_SPEED = 1.9;
 const RENDER_PIXEL_SCALE = 3;

@@ -15,8 +15,6 @@ const MIN_RENDER_HEIGHT = 180;
 const GAME_ASPECT = 16 / 9;
 const TAU = Math.PI * 2;
 const OUTSIDE_CAM_DIST = 4.8;
-const VISUAL_ZOOM_MIN = 0.9;
-const VISUAL_ZOOM_MAX = 1.25;
 const MAX_FORMATION_VISUAL_SHIPS = 28;
 const FORMATION_BACK_STEP = 8;
 const FORMATION_SIDE_STEP = 6;
@@ -277,7 +275,7 @@ function drawGrid(ctx, world, camera) {
 function drawLightCones(ctx, world, camera) {
   const coordNow = world.player.coordTime ?? world.t;
   const origin = projectXT(world.player.pos.x, coordNow, camera);
-  const coneSpan = 1.4 + 2.4 / Math.max(camera.zoom, 0.5);
+  const coneSpan = 1.25 + 1.9 / Math.max(camera.rawZoom, 0.5);
   const steps = 20;
 
   const drawConeBranch = (sign, future) => {
@@ -647,16 +645,17 @@ function makeCamera(displayWidth, displayHeight, world, cameraState) {
   const minZoom = Math.max(0.001, cameraState.minZoom ?? 1);
   const maxZoom = Math.max(minZoom + 0.001, cameraState.maxZoom ?? Math.max(minZoom + 0.001, rawZoom));
   const zoomT = clamp((rawZoom - minZoom) / (maxZoom - minZoom), 0, 1);
+  const zoomRatio = Math.max(1, rawZoom / minZoom);
   const finishT = Math.max(1, world.finishT ?? 1);
   const playerLon = (normalizedWrap01(world.player?.pos?.x ?? 0, world.arenaX) - 0.5) * TAU;
   const playerLat = (temporalPhase01(world.player?.coordTime ?? world.t, finishT) - 0.5) * Math.PI;
   const sphereYaw = Math.PI * 0.5 - playerLon;
   const spherePitch = playerLat;
   const sphereFitRadius = Math.min(displayWidth, displayHeight) * 0.39;
-  const sphereRadius = sphereFitRadius * (1 + zoomT * 10);
+  const sphereRadius = sphereFitRadius * (1 + 2.2 * Math.pow(zoomRatio, 1.18));
   const outsideCamDist = OUTSIDE_CAM_DIST;
   const frontDepthThreshold = 0;
-  const zoom = VISUAL_ZOOM_MIN + (VISUAL_ZOOM_MAX - VISUAL_ZOOM_MIN) * zoomT;
+  const zoom = clamp(0.88 * Math.pow(zoomRatio, 0.58), 0.88, 3.1);
 
   return {
     originX: cameraState.x ?? 0,
