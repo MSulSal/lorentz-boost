@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { C, clamp } from './relativity';
 import { createWorld, cyclePlayerTeam, getHud, rankEntities, stepWorld } from './world';
 import { renderWorld } from './render';
@@ -30,6 +30,7 @@ const GAME_ASPECT = 16 / 9;
 const PINCH_DISTANCE_EPS = 6;
 const STEER_DEADZONE = 0.018;
 const TILT_AXIS_GAIN = 1 / 18;
+const MOTION_RATE_GAIN = 1 / 42;
 const MOUSE_AXIS_GAIN = 1.95;
 const MOUSE_DELTA_PIXELS = 26;
 const AXIS_CURVE = 0.68;
@@ -544,7 +545,7 @@ export default function App() {
   const keys = useKeyboard();
   const touchRef = useRef({ reversePulse: false });
   const mouseRef = useRef({ axis: 0, active: false, reversePulse: false, lastX: null, lastMoveAt: 0 });
-  const motionRef = useRef({ axis: 0, active: false, lastUpdateAt: 0, requestPermission: null });
+  const motionRef = useRef({ axis: 0, active: false, lastUpdateAt: 0, sawSensorData: false, requestPermission: null });
   const pinchRef = useRef({
     pointers: new Map(),
     startDistance: 0,
@@ -557,6 +558,7 @@ export default function App() {
   const teamLatch = useRef(false);
   const spaceLatch = useRef(false);
   const [isCoarsePointer, setIsCoarsePointer] = useState(() => isCoarsePointerDevice());
+  const [motionStatus, setMotionStatus] = useState('unknown');
   const [worldVersion, setWorldVersion] = useState(0);
   const [hudOpen, setHudOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
@@ -587,11 +589,25 @@ export default function App() {
   if (!worldRef.current) worldRef.current = createWorld();
   if (!audioRef.current) audioRef.current = createAudioSystem();
 
+  const requestMotionAccess = useCallback(async () => {
+    const req = motionRef.current.requestPermission;
+    if (!req) return false;
+    setMotionStatus((s) => (s === 'granted' ? s : 'requesting'));
+    try {
+      const granted = await req();
+      setMotionStatus(granted ? 'granted' : 'denied');
+      return granted;
+    } catch {
+      setMotionStatus('error');
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     const armAudio = () => {
       startAudio(audioRef.current);
       applyAudioMix(audioRef.current, audioMixRef.current);
-      motionRef.current.requestPermission?.();
+      void requestMotionAccess();
     };
     window.addEventListener('keydown', armAudio, { passive: true });
     window.addEventListener('pointerdown', armAudio, { passive: true });
@@ -600,7 +616,7 @@ export default function App() {
       window.removeEventListener('pointerdown', armAudio);
       destroyAudio(audioRef.current);
     };
-  }, []);
+  }, [requestMotionAccess]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
@@ -698,12 +714,26 @@ export default function App() {
     if (typeof window === 'undefined') return undefined;
     const motion = motionRef.current;
     const ctor = window.DeviceOrientationEvent;
+    const motionCtor = window.DeviceMotionEvent;
+    if (!window.isSecureContext) {
+      motion.requestPermission = null;
+      motion.active = false;
+      motion.axis = 0;
+      motion.lastUpdateAt = 0;
+      motion.sawSensorData = false;
+      setMotionStatus('insecure');
+      return undefined;
+    }
     if (!ctor) {
       motion.requestPermission = null;
       motion.active = false;
       motion.axis = 0;
+      motion.lastUpdateAt = 0;
+      motion.sawSensorData = false;
+      setMotionStatus('unsupported');
       return undefined;
     }
+    setMotionStatus((s) => (s === 'granted' ? s : 'unknown'));
 
     const readScreenAngle = () => {
       const angle = window.screen?.orientation?.angle;
@@ -730,32 +760,68 @@ export default function App() {
       return g * TILT_AXIS_GAIN;
     };
 
-    const onOrientation = (e) => {
-      if (!Number.isFinite(e?.beta) && !Number.isFinite(e?.gamma)) return;
-      const axisRaw = -axisFromOrientation(e.beta, e.gamma);
-      const axis = applyDeadzone(shapeAxis(axisRaw));
+    const axisFromRotationRate = (betaRate, gammaRate) => {
+      const b = Number.isFinite(betaRate) ? betaRate : 0;
+      const g = Number.isFinite(gammaRate) ? gammaRate : 0;
+      const bucket = angleBucket();
+      if (bucket === 90) return -b * MOTION_RATE_GAIN;
+      if (bucket === 270) return b * MOTION_RATE_GAIN;
+      if (bucket === 180) return -g * MOTION_RATE_GAIN;
+      return g * MOTION_RATE_GAIN;
+    };
+
+    const updateAxis = (axisRaw) => {
+      const axis = applyDeadzone(shapeAxis(clamp(axisRaw, -1, 1)));
       if (axis === 0) {
         motion.axis = 0;
       } else {
         motion.axis = motion.axis * 0.32 + axis * 0.68;
       }
       motion.active = true;
+      motion.sawSensorData = true;
       motion.lastUpdateAt = performance.now();
+      setMotionStatus((s) => (s === 'granted' ? s : 'granted'));
+    };
+
+    const onOrientation = (e) => {
+      if (!Number.isFinite(e?.beta) && !Number.isFinite(e?.gamma)) return;
+      updateAxis(-axisFromOrientation(e.beta, e.gamma));
+    };
+
+    const onMotion = (e) => {
+      const rr = e?.rotationRate;
+      if (!rr) return;
+      const axisRaw = -axisFromRotationRate(rr.beta, rr.gamma);
+      updateAxis(axisRaw);
     };
 
     let attached = false;
     const attach = () => {
       if (attached) return;
       window.addEventListener('deviceorientation', onOrientation, true);
+      window.addEventListener('deviceorientationabsolute', onOrientation, true);
+      window.addEventListener('devicemotion', onMotion, true);
       attached = true;
+    };
+
+    const requestOne = async (permissionCtor) => {
+      if (!permissionCtor || typeof permissionCtor.requestPermission !== 'function') return 'unsupported';
+      try {
+        return await permissionCtor.requestPermission();
+      } catch {
+        return 'denied';
+      }
     };
 
     motion.requestPermission = async () => {
       try {
-        if (typeof ctor.requestPermission === 'function') {
-          const result = await ctor.requestPermission();
-          if (result !== 'granted') return false;
-        }
+        const [orientationPermission, motionPermission] = await Promise.all([
+          requestOne(ctor),
+          requestOne(motionCtor),
+        ]);
+        const orientationOkay = orientationPermission === 'granted' || orientationPermission === 'unsupported';
+        const motionOkay = motionPermission === 'granted' || motionPermission === 'unsupported';
+        if (!orientationOkay && !motionOkay) return false;
         attach();
         return true;
       } catch {
@@ -769,10 +835,13 @@ export default function App() {
 
     return () => {
       if (attached) window.removeEventListener('deviceorientation', onOrientation, true);
+      if (attached) window.removeEventListener('deviceorientationabsolute', onOrientation, true);
+      if (attached) window.removeEventListener('devicemotion', onMotion, true);
       motion.requestPermission = null;
       motion.active = false;
       motion.axis = 0;
       motion.lastUpdateAt = 0;
+      motion.sawSensorData = false;
     };
   }, []);
 
@@ -957,6 +1026,20 @@ export default function App() {
         >
           {audioOpen ? 'Hide Audio' : 'Audio'}
         </button>
+        {isCoarsePointer && motionStatus !== 'granted' && (
+          <button
+            className={`motion-toggle ${motionStatus === 'requesting' ? 'open' : ''}`}
+            onClick={() => { void requestMotionAccess(); }}
+          >
+            {motionStatus === 'insecure'
+              ? 'Tilt Needs HTTPS'
+              : motionStatus === 'unsupported'
+                ? 'Tilt Unavailable'
+                : motionStatus === 'requesting'
+                  ? 'Enabling Tilt...'
+                  : 'Enable Tilt'}
+          </button>
+        )}
       </div>
       {hudOpen && (
         <Hud

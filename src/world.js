@@ -729,7 +729,7 @@ function tryRetroBoost(entity, world) {
   entity.timeDirection = (entity.timeDirection ?? 1) >= 0 ? -1 : 1;
   entity.retroReadyAt = world.t + RETRO_COOLDOWN;
   entity.selfTrailGraceUntil = Math.max(entity.selfTrailGraceUntil ?? 0, world.t + RETRO_SELF_TRAIL_GRACE);
-  entity.invulnerableUntil = Math.max(entity.invulnerableUntil, world.t + 0.48);
+  entity.invulnerableUntil = Math.max(entity.invulnerableUntil, world.t + 1.1);
   // Prevent an instant cusp segment at reversal from counting as a paradox hit.
   entity.lastTrailAt = world.t;
   emitFlash(world, {
